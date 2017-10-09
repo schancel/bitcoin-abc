@@ -42,17 +42,17 @@ extern bool fSendFreeTransactions;
 
 static const unsigned int DEFAULT_KEYPOOL_SIZE = 100;
 //! -paytxfee default
-static const CAmount DEFAULT_TRANSACTION_FEE = 0;
+static const Amount DEFAULT_TRANSACTION_FEE = 0;
 //! -fallbackfee default
-static const CAmount DEFAULT_FALLBACK_FEE = 20000;
+static const Amount DEFAULT_FALLBACK_FEE = 20000;
 //! -mintxfee default
-static const CAmount DEFAULT_TRANSACTION_MINFEE = 1000;
+static const Amount DEFAULT_TRANSACTION_MINFEE = 1000;
 //! minimum recommended increment for BIP 125 replacement txs
-static const CAmount WALLET_INCREMENTAL_RELAY_FEE = 5000;
+static const Amount WALLET_INCREMENTAL_RELAY_FEE = 5000;
 //! target minimum change amount
-static const CAmount MIN_CHANGE = CENT.GetSatoshis();
+static const Amount MIN_CHANGE = CENT.GetSatoshis();
 //! final minimum change amount after paying for fees
-static const CAmount MIN_FINAL_CHANGE = MIN_CHANGE / 2;
+static const Amount MIN_FINAL_CHANGE = MIN_CHANGE / 2;
 //! Default for -spendzeroconfchange
 static const bool DEFAULT_SPEND_ZEROCONF_CHANGE = true;
 //! Default for -sendfreetransactions
@@ -133,7 +133,7 @@ public:
 
 struct CRecipient {
     CScript scriptPubKey;
-    CAmount nAmount;
+    Amount nAmount;
     bool fSubtractFeeFromAmount;
 };
 
@@ -157,7 +157,7 @@ static inline void WriteOrderPos(const int64_t &nOrderPos,
 
 struct COutputEntry {
     CTxDestination destination;
-    CAmount amount;
+    Amount amount;
     int vout;
 };
 
@@ -237,7 +237,7 @@ public:
      * Pass this transaction to the mempool. Fails if absolute fee exceeds
      * absurd fee.
      */
-    bool AcceptToMemoryPool(const CAmount &nAbsurdFee, CValidationState &state);
+    bool AcceptToMemoryPool(const Amount nAbsurdFee, CValidationState &state);
     bool hashUnset() const {
         return (hashBlock.IsNull() || hashBlock == ABANDON_HASH);
     }
@@ -284,15 +284,15 @@ public:
     mutable bool fImmatureWatchCreditCached;
     mutable bool fAvailableWatchCreditCached;
     mutable bool fChangeCached;
-    mutable CAmount nDebitCached;
-    mutable CAmount nCreditCached;
-    mutable CAmount nImmatureCreditCached;
-    mutable CAmount nAvailableCreditCached;
-    mutable CAmount nWatchDebitCached;
-    mutable CAmount nWatchCreditCached;
-    mutable CAmount nImmatureWatchCreditCached;
-    mutable CAmount nAvailableWatchCreditCached;
-    mutable CAmount nChangeCached;
+    mutable Amount nDebitCached;
+    mutable Amount nCreditCached;
+    mutable Amount nImmatureCreditCached;
+    mutable Amount nAvailableCreditCached;
+    mutable Amount nWatchDebitCached;
+    mutable Amount nWatchCreditCached;
+    mutable Amount nImmatureWatchCreditCached;
+    mutable Amount nAvailableWatchCreditCached;
+    mutable Amount nChangeCached;
 
     CWalletTx() { Init(nullptr); }
 
@@ -393,21 +393,21 @@ public:
     }
 
     //! filter decides which addresses will count towards the debit
-    CAmount GetDebit(const isminefilter &filter) const;
-    CAmount GetCredit(const isminefilter &filter) const;
-    CAmount GetImmatureCredit(bool fUseCache = true) const;
-    CAmount GetAvailableCredit(bool fUseCache = true) const;
-    CAmount GetImmatureWatchOnlyCredit(const bool &fUseCache = true) const;
-    CAmount GetAvailableWatchOnlyCredit(const bool &fUseCache = true) const;
-    CAmount GetChange() const;
+    Amount GetDebit(const isminefilter &filter) const;
+    Amount GetCredit(const isminefilter &filter) const;
+    Amount GetImmatureCredit(bool fUseCache = true) const;
+    Amount GetAvailableCredit(bool fUseCache = true) const;
+    Amount GetImmatureWatchOnlyCredit(const bool &fUseCache = true) const;
+    Amount GetAvailableWatchOnlyCredit(const bool &fUseCache = true) const;
+    Amount GetChange() const;
 
     void GetAmounts(std::list<COutputEntry> &listReceived,
-                    std::list<COutputEntry> &listSent, CAmount &nFee,
+                    std::list<COutputEntry> &listSent, Amount &nFee,
                     std::string &strSentAccount,
                     const isminefilter &filter) const;
 
-    void GetAccountAmounts(const std::string &strAccount, CAmount &nReceived,
-                           CAmount &nSent, CAmount &nFee,
+    void GetAccountAmounts(const std::string &strAccount, Amount &nReceived,
+                           Amount &nSent, Amount &nFee,
                            const isminefilter &filter) const;
 
     bool IsFromMe(const isminefilter &filter) const {
@@ -480,7 +480,7 @@ public:
 class CAccountingEntry {
 public:
     std::string strAccount;
-    CAmount nCreditDebit;
+    Amount nCreditDebit;
     int64_t nTime;
     std::string strOtherAccount;
     std::string strComment;
@@ -564,9 +564,9 @@ private:
      */
     bool SelectCoins(
         const std::vector<COutput> &vAvailableCoins,
-        const CAmount &nTargetValue,
+        const Amount nTargetValue,
         std::set<std::pair<const CWalletTx *, unsigned int>> &setCoinsRet,
-        CAmount &nValueRet, const CCoinControl *coinControl = nullptr) const;
+        Amount &nValueRet, const CCoinControl *coinControl = nullptr) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -714,10 +714,10 @@ public:
      * assembled.
      */
     bool SelectCoinsMinConf(
-        const CAmount &nTargetValue, int nConfMine, int nConfTheirs,
+        const Amount nTargetValue, int nConfMine, int nConfTheirs,
         uint64_t nMaxAncestors, std::vector<COutput> vCoins,
         std::set<std::pair<const CWalletTx *, unsigned int>> &setCoinsRet,
-        CAmount &nValueRet) const;
+        Amount &nValueRet) const;
 
     bool IsSpent(const uint256 &hash, unsigned int n) const;
 
@@ -795,7 +795,7 @@ public:
      */
     int64_t IncOrderPosNext(CWalletDB *pwalletdb = nullptr);
     DBErrors ReorderTransactions();
-    bool AccountMove(std::string strFrom, std::string strTo, CAmount nAmount,
+    bool AccountMove(std::string strFrom, std::string strTo, Amount nAmount,
                      std::string strComment = "");
     bool GetAccountPubkey(CPubKey &pubKey, std::string strAccount,
                           bool bForceNew = false);
@@ -815,18 +815,18 @@ public:
                                   CConnman *connman) override;
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime,
                                                         CConnman *connman);
-    CAmount GetBalance() const;
-    CAmount GetUnconfirmedBalance() const;
-    CAmount GetImmatureBalance() const;
-    CAmount GetWatchOnlyBalance() const;
-    CAmount GetUnconfirmedWatchOnlyBalance() const;
-    CAmount GetImmatureWatchOnlyBalance() const;
+    Amount GetBalance() const;
+    Amount GetUnconfirmedBalance() const;
+    Amount GetImmatureBalance() const;
+    Amount GetWatchOnlyBalance() const;
+    Amount GetUnconfirmedWatchOnlyBalance() const;
+    Amount GetImmatureWatchOnlyBalance() const;
 
     /**
      * Insert additional inputs into the transaction by calling
      * CreateTransaction();
      */
-    bool FundTransaction(CMutableTransaction &tx, CAmount &nFeeRet,
+    bool FundTransaction(CMutableTransaction &tx, Amount &nFeeRet,
                          bool overrideEstimatedFeeRate,
                          const CFeeRate &specificFeeRate, int &nChangePosInOut,
                          std::string &strFailReason, bool includeWatching,
@@ -843,7 +843,7 @@ public:
      */
     bool CreateTransaction(const std::vector<CRecipient> &vecSend,
                            CWalletTx &wtxNew, CReserveKey &reservekey,
-                           CAmount &nFeeRet, int &nChangePosInOut,
+                           Amount &nFeeRet, int &nChangePosInOut,
                            std::string &strFailReason,
                            const CCoinControl *coinControl = nullptr,
                            bool sign = true);
@@ -863,21 +863,21 @@ public:
      * Estimate the minimum fee considering user set parameters and the required
      * fee
      */
-    static CAmount GetMinimumFee(unsigned int nTxBytes,
+    static Amount GetMinimumFee(unsigned int nTxBytes,
                                  unsigned int nConfirmTarget,
                                  const CTxMemPool &pool);
     /**
      * Estimate the minimum fee considering required fee and targetFee or if 0
      * then fee estimation for nConfirmTarget
      */
-    static CAmount GetMinimumFee(unsigned int nTxBytes,
+    static Amount GetMinimumFee(unsigned int nTxBytes,
                                  unsigned int nConfirmTarget,
-                                 const CTxMemPool &pool, CAmount targetFee);
+                                 const CTxMemPool &pool, Amount targetFee);
     /**
      * Return the minimum required fee taking into account the floating relay
      * fee and user set minimum transaction fee
      */
-    static CAmount GetRequiredFee(unsigned int nTxBytes);
+    static Amount GetRequiredFee(unsigned int nTxBytes);
 
     bool NewKeyPool();
     bool TopUpKeyPool(unsigned int kpSize = 0);
@@ -889,11 +889,11 @@ public:
     void GetAllReserveKeys(std::set<CKeyID> &setAddress) const;
 
     std::set<std::set<CTxDestination>> GetAddressGroupings();
-    std::map<CTxDestination, CAmount> GetAddressBalances();
+    std::map<CTxDestination, Amount> GetAddressBalances();
 
-    CAmount GetAccountBalance(const std::string &strAccount, int nMinDepth,
+    Amount GetAccountBalance(const std::string &strAccount, int nMinDepth,
                               const isminefilter &filter);
-    CAmount GetAccountBalance(CWalletDB &walletdb,
+    Amount GetAccountBalance(CWalletDB &walletdb,
                               const std::string &strAccount, int nMinDepth,
                               const isminefilter &filter);
     std::set<CTxDestination>
@@ -904,19 +904,19 @@ public:
      * Returns amount of debit if the input matches the filter, otherwise
      * returns 0
      */
-    CAmount GetDebit(const CTxIn &txin, const isminefilter &filter) const;
+    Amount GetDebit(const CTxIn &txin, const isminefilter &filter) const;
     isminetype IsMine(const CTxOut &txout) const;
-    CAmount GetCredit(const CTxOut &txout, const isminefilter &filter) const;
+    Amount GetCredit(const CTxOut &txout, const isminefilter &filter) const;
     bool IsChange(const CTxOut &txout) const;
-    CAmount GetChange(const CTxOut &txout) const;
+    Amount GetChange(const CTxOut &txout) const;
     bool IsMine(const CTransaction &tx) const;
     /** should probably be renamed to IsRelevantToMe */
     bool IsFromMe(const CTransaction &tx) const;
-    CAmount GetDebit(const CTransaction &tx, const isminefilter &filter) const;
+    Amount GetDebit(const CTransaction &tx, const isminefilter &filter) const;
     /** Returns whether all of the inputs match the filter */
     bool IsAllFromMe(const CTransaction &tx, const isminefilter &filter) const;
-    CAmount GetCredit(const CTransaction &tx, const isminefilter &filter) const;
-    CAmount GetChange(const CTransaction &tx) const;
+    Amount GetCredit(const CTransaction &tx, const isminefilter &filter) const;
+    Amount GetChange(const CTransaction &tx) const;
     void SetBestChain(const CBlockLocator &loc) override;
 
     DBErrors LoadWallet(bool &fFirstRunRet);

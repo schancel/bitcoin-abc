@@ -375,9 +375,9 @@ static UniValue getaddressesbyaccount(const Config &config,
     return ret;
 }
 
-static void SendMoney(const CTxDestination &address, CAmount nValue,
+static void SendMoney(const CTxDestination &address, Amount nValue,
                       bool fSubtractFeeFromAmount, CWalletTx &wtxNew) {
-    CAmount curBalance = pwalletMain->GetBalance();
+    Amount curBalance = pwalletMain->GetBalance();
 
     // Check amount
     if (nValue <= 0) {
@@ -399,7 +399,7 @@ static void SendMoney(const CTxDestination &address, CAmount nValue,
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
-    CAmount nFeeRequired;
+    Amount nFeeRequired;
     std::string strError;
     std::vector<CRecipient> vecSend;
     int nChangePosRet = -1;
@@ -483,7 +483,7 @@ static UniValue sendtoaddress(const Config &config,
     }
 
     // Amount
-    CAmount nAmount = AmountFromValue(request.params[1]).GetSatoshis();
+    Amount nAmount = AmountFromValue(request.params[1]);
     if (nAmount <= 0) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for send");
     }
@@ -546,7 +546,7 @@ static UniValue listaddressgroupings(const Config &config,
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     UniValue jsonGroupings(UniValue::VARR);
-    std::map<CTxDestination, CAmount> balances =
+    std::map<CTxDestination, Amount> balances =
         pwalletMain->GetAddressBalances();
     for (const std::set<CTxDestination> &grouping :
          pwalletMain->GetAddressGroupings()) {
@@ -697,7 +697,7 @@ static UniValue getreceivedbyaddress(const Config &config,
     }
 
     // Tally
-    CAmount nAmount = 0;
+    Amount nAmount = 0;
     for (std::map<uint256, CWalletTx>::iterator it =
              pwalletMain->mapWallet.begin();
          it != pwalletMain->mapWallet.end(); ++it) {
@@ -770,7 +770,7 @@ static UniValue getreceivedbyaccount(const Config &config,
         pwalletMain->GetAccountAddresses(strAccount);
 
     // Tally
-    CAmount nAmount = 0;
+    Amount nAmount = 0;
     for (std::map<uint256, CWalletTx>::iterator it =
              pwalletMain->mapWallet.begin();
          it != pwalletMain->mapWallet.end(); ++it) {
@@ -875,7 +875,7 @@ static UniValue getbalance(const Config &config,
         // unspent TxOuts paying to the wallet, and then subtracts the values of
         // TxIns spending from the wallet. This also has fewer restrictions on
         // which unconfirmed transactions are considered trusted.
-        CAmount nBalance = 0;
+        Amount nBalance = 0;
         for (std::map<uint256, CWalletTx>::iterator it =
                  pwalletMain->mapWallet.begin();
              it != pwalletMain->mapWallet.end(); ++it) {
@@ -889,7 +889,7 @@ static UniValue getbalance(const Config &config,
                 continue;
             }
 
-            CAmount allFee;
+            Amount allFee;
             std::string strSentAccount;
             std::list<COutputEntry> listReceived;
             std::list<COutputEntry> listSent;
@@ -910,7 +910,7 @@ static UniValue getbalance(const Config &config,
 
     std::string strAccount = AccountFromValue(request.params[0]);
 
-    CAmount nBalance =
+    Amount nBalance =
         pwalletMain->GetAccountBalance(strAccount, nMinDepth, filter);
 
     return ValueFromAmount(nBalance);
@@ -978,7 +978,7 @@ static UniValue movecmd(const Config &config, const JSONRPCRequest &request) {
 
     std::string strFrom = AccountFromValue(request.params[0]);
     std::string strTo = AccountFromValue(request.params[1]);
-    CAmount nAmount = AmountFromValue(request.params[2]).GetSatoshis();
+    Amount nAmount = AmountFromValue(request.params[2]).GetSatoshis();
     if (nAmount <= 0) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for send");
     }
@@ -1067,7 +1067,7 @@ static UniValue sendfrom(const Config &config, const JSONRPCRequest &request) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY,
                            "Invalid Bitcoin address");
     }
-    CAmount nAmount = AmountFromValue(request.params[2]).GetSatoshis();
+    Amount nAmount = AmountFromValue(request.params[2]).GetSatoshis();
     if (nAmount <= 0) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for send");
     }
@@ -1092,7 +1092,7 @@ static UniValue sendfrom(const Config &config, const JSONRPCRequest &request) {
     EnsureWalletIsUnlocked();
 
     // Check funds
-    CAmount nBalance =
+    Amount nBalance =
         pwalletMain->GetAccountBalance(strAccount, nMinDepth, ISMINE_SPENDABLE);
     if (nAmount > nBalance) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
@@ -1212,7 +1212,7 @@ static UniValue sendmany(const Config &config, const JSONRPCRequest &request) {
     std::set<CTxDestination> destinations;
     std::vector<CRecipient> vecSend;
 
-    CAmount totalAmount = 0;
+    Amount totalAmount(0);
     std::vector<std::string> keys = sendTo.getKeys();
     for (const std::string &name_ : keys) {
         CTxDestination dest = DecodeDestination(name_);
@@ -1230,7 +1230,7 @@ static UniValue sendmany(const Config &config, const JSONRPCRequest &request) {
         destinations.insert(dest);
 
         CScript scriptPubKey = GetScriptForDestination(dest);
-        CAmount nAmount = AmountFromValue(sendTo[name_]).GetSatoshis();
+        Amount nAmount = AmountFromValue(sendTo[name_]).GetSatoshis();
         if (nAmount <= 0) {
             throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for send");
         }
@@ -1251,7 +1251,7 @@ static UniValue sendmany(const Config &config, const JSONRPCRequest &request) {
     EnsureWalletIsUnlocked();
 
     // Check funds
-    CAmount nBalance =
+    Amount nBalance =
         pwalletMain->GetAccountBalance(strAccount, nMinDepth, ISMINE_SPENDABLE);
     if (totalAmount > nBalance) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS,
@@ -1260,7 +1260,7 @@ static UniValue sendmany(const Config &config, const JSONRPCRequest &request) {
 
     // Send
     CReserveKey keyChange(pwalletMain);
-    CAmount nFeeRequired = 0;
+    Amount nFeeRequired = 0;
     int nChangePosRet = -1;
     std::string strFailReason;
     bool fCreated = pwalletMain->CreateTransaction(
@@ -1342,7 +1342,7 @@ static UniValue addmultisigaddress(const Config &config,
 }
 
 struct tallyitem {
-    CAmount nAmount;
+    Amount nAmount;
     int nConf;
     std::vector<uint256> txids;
     bool fIsWatchonly;
@@ -1424,7 +1424,7 @@ static UniValue ListReceived(const Config &config, const UniValue &params,
             continue;
         }
 
-        CAmount nAmount = 0;
+        Amount nAmount = 0;
         int nConf = std::numeric_limits<int>::max();
         bool fIsWatchonly = false;
         if (it != mapTally.end()) {
@@ -1467,7 +1467,7 @@ static UniValue ListReceived(const Config &config, const UniValue &params,
         for (std::map<std::string, tallyitem>::iterator it =
                  mapAccountTally.begin();
              it != mapAccountTally.end(); ++it) {
-            CAmount nAmount = (*it).second.nAmount;
+            Amount nAmount = (*it).second.nAmount;
             int nConf = (*it).second.nConf;
             UniValue obj(UniValue::VOBJ);
             if ((*it).second.fIsWatchonly) {
@@ -1595,7 +1595,7 @@ static void MaybePushAddress(UniValue &entry, const CTxDestination &dest) {
 void ListTransactions(const CWalletTx &wtx, const std::string &strAccount,
                       int nMinDepth, bool fLong, UniValue &ret,
                       const isminefilter &filter) {
-    CAmount nFee;
+    Amount nFee;
     std::string strSentAccount;
     std::list<COutputEntry> listReceived;
     std::list<COutputEntry> listSent;
@@ -1617,13 +1617,13 @@ void ListTransactions(const CWalletTx &wtx, const std::string &strAccount,
             entry.push_back(Pair("account", strSentAccount));
             MaybePushAddress(entry, s.destination);
             entry.push_back(Pair("category", "send"));
-            entry.push_back(Pair("amount", ValueFromAmount(-s.amount)));
+            entry.push_back(Pair("amount", ValueFromAmount(-1 * s.amount)));
             if (pwalletMain->mapAddressBook.count(s.destination)) {
                 entry.push_back(Pair(
                     "label", pwalletMain->mapAddressBook[s.destination].name));
             }
             entry.push_back(Pair("vout", s.vout));
-            entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
+            entry.push_back(Pair("fee", ValueFromAmount(-1 * nFee)));
             if (fLong) {
                 WalletTxToJSON(wtx, entry);
             }
@@ -1923,7 +1923,7 @@ static UniValue listaccounts(const Config &config,
         includeWatchonly = includeWatchonly | ISMINE_WATCH_ONLY;
     }
 
-    std::map<std::string, CAmount> mapAccountBalances;
+    std::map<std::string, Amount> mapAccountBalances;
     for (const std::pair<CTxDestination, CAddressBookData> &entry :
          pwalletMain->mapAddressBook) {
         // This address belongs to me
@@ -1936,7 +1936,7 @@ static UniValue listaccounts(const Config &config,
              pwalletMain->mapWallet.begin();
          it != pwalletMain->mapWallet.end(); ++it) {
         const CWalletTx &wtx = (*it).second;
-        CAmount nFee;
+        Amount nFee;
         std::string strSentAccount;
         std::list<COutputEntry> listReceived;
         std::list<COutputEntry> listSent;
@@ -1969,7 +1969,7 @@ static UniValue listaccounts(const Config &config,
     }
 
     UniValue ret(UniValue::VOBJ);
-    for (const std::pair<std::string, CAmount> &accountBalance :
+    for (const std::pair<std::string, Amount> &accountBalance :
          mapAccountBalances) {
         ret.push_back(
             Pair(accountBalance.first, ValueFromAmount(accountBalance.second)));
@@ -2233,10 +2233,10 @@ static UniValue gettransaction(const Config &config,
 
     const CWalletTx &wtx = pwalletMain->mapWallet[hash];
 
-    CAmount nCredit = wtx.GetCredit(filter);
-    CAmount nDebit = wtx.GetDebit(filter);
-    CAmount nNet = nCredit - nDebit;
-    CAmount nFee =
+    Amount nCredit = wtx.GetCredit(filter);
+    Amount nDebit = wtx.GetDebit(filter);
+    Amount nNet = nCredit - nDebit;
+    Amount nFee =
         (wtx.IsFromMe(filter) ? wtx.tx->GetValueOut() - nDebit : Amount(0))
             .GetSatoshis();
 
@@ -2848,7 +2848,7 @@ static UniValue settxfee(const Config &config, const JSONRPCRequest &request) {
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     // Amount
-    CAmount nAmount = AmountFromValue(request.params[0]).GetSatoshis();
+    Amount nAmount = AmountFromValue(request.params[0]);
 
     payTxFee = CFeeRate(nAmount, 1000);
     return true;
@@ -3315,7 +3315,7 @@ static UniValue fundrawtransaction(const Config &config,
         setSubtractFeeFromOutputs.insert(pos);
     }
 
-    CAmount nFeeOut;
+    Amount nFeeOut;
     std::string strFailReason;
 
     if (!pwalletMain->FundTransaction(
