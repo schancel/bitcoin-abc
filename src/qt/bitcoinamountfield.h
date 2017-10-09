@@ -20,7 +20,7 @@ QT_END_NAMESPACE
 class BitcoinAmountField : public QWidget {
     Q_OBJECT
 
-    // ugly hack: for some unknown reason CAmount (instead of qint64) does not
+    // ugly hack: for some unknown reason Amount (instead of qint64) does not
     // work here as expected
     // discussion: https://github.com/bitcoin/bitcoin/pull/5117
     Q_PROPERTY(
@@ -29,11 +29,11 @@ class BitcoinAmountField : public QWidget {
 public:
     explicit BitcoinAmountField(QWidget *parent = 0);
 
-    CAmount value(bool *value = 0) const;
-    void setValue(const CAmount &value);
+    qint64 value(bool *value = 0) const;
+    void setValue(const qint64 &value);
 
     /** Set single step in satoshis **/
-    void setSingleStep(const CAmount &step);
+    void setSingleStep(const qint64 &step);
 
     /** Make read-only **/
     void setReadOnly(bool fReadOnly);

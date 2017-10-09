@@ -192,10 +192,12 @@ bool parseBitcoinURI(const QUrl &uri, SendCoinsRecipient *out) {
             fShouldReturnFalse = false;
         } else if (i->first == "amount") {
             if (!i->second.isEmpty()) {
+                qint64 ret_value;
                 if (!BitcoinUnits::parse(BitcoinUnits::BCC, i->second,
-                                         &rv.amount)) {
+                                         &ret_value)) {
                     return false;
                 }
+                rv.amount = ret_value;
             }
             fShouldReturnFalse = false;
         }
@@ -227,7 +229,7 @@ QString formatBitcoinURI(const SendCoinsRecipient &info) {
     QString ret = (URI_SCHEME + ":%1").arg(info.address);
     int paramCount = 0;
 
-    if (info.amount) {
+    if (info.amount != 0) {
         ret +=
             QString("?amount=%1")
                 .arg(BitcoinUnits::format(BitcoinUnits::BCC, info.amount, false,
@@ -251,7 +253,7 @@ QString formatBitcoinURI(const SendCoinsRecipient &info) {
     return ret;
 }
 
-bool isDust(const QString &address, const CAmount &amount) {
+bool isDust(const QString &address, const Amount &amount) {
     CTxDestination dest = DecodeDestination(address.toStdString());
     CScript script = GetScriptForDestination(dest);
     CTxOut txOut(amount, script);

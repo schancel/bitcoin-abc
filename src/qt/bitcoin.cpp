@@ -82,7 +82,7 @@ Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin);
 
 // Declare meta types used for QMetaObject::invokeMethod
 Q_DECLARE_METATYPE(bool *)
-Q_DECLARE_METATYPE(CAmount)
+Q_DECLARE_METATYPE(Amount)
 // Config is non-copyable so we can only register pointers to it
 Q_DECLARE_METATYPE(Config *)
 
@@ -620,10 +620,10 @@ int main(int argc, char *argv[]) {
 
     // Register meta types used for QMetaObject::invokeMethod
     qRegisterMetaType<bool *>();
-    //   Need to pass name here as CAmount is a typedef (see
+    //   Need to pass name here as Amount is a typedef (see
     //   http://qt-project.org/doc/qt-5/qmetatype.html#qRegisterMetaType)
     //   IMPORTANT if it is no longer a typedef use the normal variant above
-    qRegisterMetaType<CAmount>("CAmount");
+    qRegisterMetaType<Amount>("Amount");
 
     // Need to register any types Qt doesn't know about if you intend
     // to use them with the signal/slot mechanism Qt provides. Even pointers.

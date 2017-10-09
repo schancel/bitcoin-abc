@@ -30,11 +30,11 @@ unsigned int WalletModelTransaction::getTransactionSize() {
     return (!walletTransaction ? 0 : ::GetTransactionSize(*walletTransaction));
 }
 
-CAmount WalletModelTransaction::getTransactionFee() {
+Amount WalletModelTransaction::getTransactionFee() {
     return fee;
 }
 
-void WalletModelTransaction::setTransactionFee(const CAmount &newFee) {
+void WalletModelTransaction::setTransactionFee(const Amount &newFee) {
     fee = newFee;
 }
 
@@ -62,8 +62,8 @@ void WalletModelTransaction::reassignAmounts(int nChangePosRet) {
     }
 }
 
-CAmount WalletModelTransaction::getTotalTransactionAmount() {
-    CAmount totalTransactionAmount = 0;
+Amount WalletModelTransaction::getTotalTransactionAmount() {
+    Amount totalTransactionAmount = 0;
     for (const SendCoinsRecipient &rcp : recipients) {
         totalTransactionAmount += rcp.amount;
     }

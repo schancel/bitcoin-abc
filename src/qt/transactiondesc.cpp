@@ -60,9 +60,9 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx,
     strHTML += "<html><font face='verdana, arial, helvetica, sans-serif'>";
 
     int64_t nTime = wtx.GetTxTime();
-    CAmount nCredit = wtx.GetCredit(ISMINE_ALL);
-    CAmount nDebit = wtx.GetDebit(ISMINE_ALL);
-    CAmount nNet = nCredit - nDebit;
+    Amount nCredit = wtx.GetCredit(ISMINE_ALL);
+    Amount nDebit = wtx.GetDebit(ISMINE_ALL);
+    Amount nNet = nCredit - nDebit;
 
     strHTML += "<b>" + tr("Status") + ":</b> " + FormatTxStatus(wtx);
     int nRequests = wtx.GetRequestCount();
@@ -137,7 +137,7 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx,
         //
         // Coinbase
         //
-        CAmount nUnmatured = 0;
+        Amount nUnmatured = 0;
         for (const CTxOut &txout : wtx.tx->vout) {
             nUnmatured += wallet->GetCredit(txout, ISMINE_ALL);
         }
@@ -218,13 +218,13 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx,
 
             if (fAllToMe) {
                 // Payment to self
-                CAmount nChange = wtx.GetChange();
-                CAmount nValue = nCredit - nChange;
+                Amount nChange = wtx.GetChange();
+                Amount nValue = nCredit - nChange;
                 strHTML += "<b>" + tr("Total debit") + ":</b> " +
-                           BitcoinUnits::formatHtmlWithUnit(unit, -nValue) +
+                           BitcoinUnits::formatHtmlWithUnit(unit, -1 * nValue) +
                            "<br>";
                 strHTML += "<b>" + tr("Total credit") + ":</b> " +
-                           BitcoinUnits::formatHtmlWithUnit(unit, nValue) +
+                           BitcoinUnits::formatHtmlWithUnit(unit, -1 * nValue) +
                            "<br>";
             }
 
@@ -242,14 +242,14 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx,
                 if (wallet->IsMine(txin))
                     strHTML += "<b>" + tr("Debit") + ":</b> " +
                                BitcoinUnits::formatHtmlWithUnit(
-                                   unit, -wallet->GetDebit(txin, ISMINE_ALL)) +
+                                   unit, -1 * wallet->GetDebit(txin, ISMINE_ALL).GetSatoshis()) +
                                "<br>";
             }
             for (const CTxOut &txout : wtx.tx->vout) {
                 if (wallet->IsMine(txout))
                     strHTML += "<b>" + tr("Credit") + ":</b> " +
                                BitcoinUnits::formatHtmlWithUnit(
-                                   unit, wallet->GetCredit(txout, ISMINE_ALL)) +
+                                   unit, wallet->GetCredit(txout, ISMINE_ALL).GetSatoshis()) +
                                "<br>";
             }
         }
@@ -320,7 +320,7 @@ QString TransactionDesc::toHTML(CWallet *wallet, CWalletTx &wtx,
             if (wallet->IsMine(txin))
                 strHTML += "<b>" + tr("Debit") + ":</b> " +
                            BitcoinUnits::formatHtmlWithUnit(
-                               unit, -wallet->GetDebit(txin, ISMINE_ALL)) +
+                               unit, -1 * wallet->GetDebit(txin, ISMINE_ALL).GetSatoshis()) +
                            "<br>";
         }
         for (const CTxOut &txout : wtx.tx->vout) {

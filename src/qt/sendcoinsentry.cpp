@@ -190,14 +190,14 @@ void SendCoinsEntry::setValue(const SendCoinsRecipient &value) {
         {
             ui->payTo_is->setText(recipient.address);
             ui->memoTextLabel_is->setText(recipient.message);
-            ui->payAmount_is->setValue(recipient.amount);
+            ui->payAmount_is->setValue(recipient.amount.GetSatoshis());
             ui->payAmount_is->setReadOnly(true);
             setCurrentWidget(ui->SendCoins_UnauthenticatedPaymentRequest);
         } else // authenticated
         {
             ui->payTo_s->setText(recipient.authenticatedMerchant);
             ui->memoTextLabel_s->setText(recipient.message);
-            ui->payAmount_s->setValue(recipient.amount);
+            ui->payAmount_s->setValue(recipient.amount.GetSatoshis());
             ui->payAmount_s->setReadOnly(true);
             setCurrentWidget(ui->SendCoins_AuthenticatedPaymentRequest);
         }
@@ -215,7 +215,7 @@ void SendCoinsEntry::setValue(const SendCoinsRecipient &value) {
                                         // addressbook, don't overwrite with an
                                         // empty label
             ui->addAsLabel->setText(recipient.label);
-        ui->payAmount->setValue(recipient.amount);
+        ui->payAmount->setValue(recipient.amount.GetSatoshis());
     }
 }
 

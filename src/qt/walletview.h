@@ -130,7 +130,7 @@ Q_SIGNALS:
     void hdEnabledStatusChanged(int hdEnabled);
     /** Notify that a new transaction appeared */
     void incomingTransaction(const QString &date, int unit,
-                             const CAmount &amount, const QString &type,
+                             const Amount &amount, const QString &type,
                              const QString &address, const QString &label);
     /** Notify that the out of sync warning icon has been pressed */
     void outOfSyncWarningClicked();

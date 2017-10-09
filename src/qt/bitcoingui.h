@@ -198,7 +198,7 @@ public Q_SLOTS:
 
     /** Show incoming transaction notification for new transactions. */
     void incomingTransaction(const QString &date, int unit,
-                             const CAmount &amount, const QString &type,
+                             const Amount &amount, const QString &type,
                              const QString &address, const QString &label);
 #endif // ENABLE_WALLET
 

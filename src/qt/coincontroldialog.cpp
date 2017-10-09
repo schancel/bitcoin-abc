@@ -30,7 +30,7 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 
-QList<CAmount> CoinControlDialog::payAmounts;
+QList<Amount> CoinControlDialog::payAmounts;
 CCoinControl *CoinControlDialog::coinControl = new CCoinControl();
 bool CoinControlDialog::fSubtractFeeFromAmount = false;
 
@@ -449,10 +449,10 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
     if (!model) return;
 
     // nPayAmount
-    CAmount nPayAmount = 0;
+    Amount nPayAmount = 0;
     bool fDust = false;
     CMutableTransaction txDummy;
-    for (const CAmount &amount : CoinControlDialog::payAmounts) {
+    for (const Amount &amount : CoinControlDialog::payAmounts) {
         nPayAmount += amount;
 
         if (amount > 0) {
@@ -462,10 +462,10 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
         }
     }
 
-    CAmount nAmount = 0;
-    CAmount nPayFee = 0;
-    CAmount nAfterFee = 0;
-    CAmount nChange = 0;
+    Amount nAmount = 0;
+    Amount nPayFee = 0;
+    Amount nAfterFee = 0;
+    Amount nChange = 0;
     unsigned int nBytes = 0;
     unsigned int nBytesInputs = 0;
     double dPriority = 0;
@@ -579,7 +579,7 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
         }
 
         // after fee
-        nAfterFee = std::max<CAmount>(nAmount - nPayFee, 0);
+        nAfterFee = std::max<Amount>(nAmount - nPayFee, 0);
     }
 
     // actually update labels
@@ -641,13 +641,12 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
     double dFeeVary;
     if (payTxFee.GetFeePerK() > 0) {
         dFeeVary = (double)std::max(CWallet::GetRequiredFee(1000),
-                                    payTxFee.GetFeePerK().GetSatoshis()) /
+                                    payTxFee.GetFeePerK()).GetSatoshis() /
                    1000;
     } else {
         dFeeVary = (double)std::max(CWallet::GetRequiredFee(1000),
                                     mempool.estimateSmartFee(nTxConfirmTarget)
-                                        .GetFeePerK()
-                                        .GetSatoshis()) /
+                                        .GetFeePerK()).GetSatoshis() /
                    1000;
     }
     QString toolTip4 =
@@ -723,7 +722,7 @@ void CoinControlDialog::updateView() {
             itemWalletAddress->setText(COLUMN_ADDRESS, sWalletAddress);
         }
 
-        CAmount nSum = 0;
+        Amount nSum = 0;
         int nChildren = 0;
         for (const COutput &out : coins.second) {
             nSum += out.tx->tx->vout[out.i].nValue.GetSatoshis();
@@ -824,7 +823,7 @@ void CoinControlDialog::updateView() {
             itemWalletAddress->setText(
                 COLUMN_AMOUNT, BitcoinUnits::format(nDisplayUnit, nSum));
             itemWalletAddress->setData(COLUMN_AMOUNT, Qt::UserRole,
-                                       QVariant((qlonglong)nSum));
+                                       QVariant((qlonglong)nSum.GetSatoshis()));
         }
     }
 
