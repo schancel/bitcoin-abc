@@ -490,9 +490,9 @@ static bool CheckTransactionCommon(const CTransaction &tx,
     }
 
     // Check for negative or overflow output values
-    Amount nValueOut = 0;
+    Amount nValueOut(0);
     for (const auto &txout : tx.vout) {
-        if (txout.nValue < 0) {
+        if (txout.nValue < Amount(0)) {
             return state.DoS(100, false, REJECT_INVALID,
                              "bad-txns-vout-negative");
         }
@@ -737,7 +737,7 @@ static bool AcceptToMemoryPoolWorker(
         CCoinsView dummy;
         CCoinsViewCache view(&dummy);
 
-        Amount nValueIn = 0;
+        Amount nValueIn(0);
         LockPoints lp;
         {
             LOCK(pool.cs);
@@ -832,9 +832,9 @@ static bool AcceptToMemoryPoolWorker(
             }
         }
 
-        CTxMemPoolEntry entry(ptx, nFees.GetSatoshis(), nAcceptTime, dPriority,
+        CTxMemPoolEntry entry(ptx, nFees, nAcceptTime, dPriority,
                               chainActive.Height(),
-                              inChainInputValue.GetSatoshis(), fSpendsCoinbase,
+                              inChainInputValue, fSpendsCoinbase,
                               nSigOpsCount, lp);
         unsigned int nSize = entry.GetTxSize();
 
@@ -852,9 +852,8 @@ static bool AcceptToMemoryPoolWorker(
         Amount mempoolRejectFee =
             pool.GetMinFee(GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) *
                            1000000)
-                .GetFee(nSize)
-                .GetSatoshis();
-        if (mempoolRejectFee > 0 && nModifiedFees < mempoolRejectFee) {
+                .GetFee(nSize);
+        if (mempoolRejectFee > Amount(0) && nModifiedFees < mempoolRejectFee) {
             return state.DoS(0, false, REJECT_INSUFFICIENTFEE,
                              "mempool min fee not met", false,
                              strprintf("%d < %d", nFees, mempoolRejectFee));
@@ -897,7 +896,7 @@ static bool AcceptToMemoryPoolWorker(
             dFreeCount += nSize;
         }
 
-        if (nAbsurdFee != 0 && nFees > nAbsurdFee) {
+        if (nAbsurdFee != Amount(0) && nFees > nAbsurdFee) {
             return state.Invalid(false, REJECT_HIGHFEE, "absurdly-high-fee",
                                  strprintf("%d > %d", nFees, nAbsurdFee));
         }
@@ -1011,7 +1010,7 @@ static bool AcceptToMemoryPoolWithTime(
     const Config &config, CTxMemPool &pool, CValidationState &state,
     const CTransactionRef &tx, bool fLimitFree, bool *pfMissingInputs,
     int64_t nAcceptTime, std::list<CTransactionRef> *plTxnReplaced = nullptr,
-    bool fOverrideMempoolLimit = false, const Amount nAbsurdFee = 0) {
+    bool fOverrideMempoolLimit = false, const Amount nAbsurdFee = Amount(0)) {
     std::vector<COutPoint> coins_to_uncache;
     bool res = AcceptToMemoryPoolWorker(
         config, pool, state, tx, fLimitFree, pfMissingInputs, nAcceptTime,
@@ -1168,7 +1167,7 @@ bool ReadBlockFromDisk(CBlock &block, const CBlockIndex *pindex,
 Amount GetBlockSubsidy(int nHeight, const Consensus::Params &consensusParams) {
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
-    if (halvings >= 64) return 0;
+    if (halvings >= 64) return Amount(0);
 
     Amount nSubsidy = 50 * COIN;
     // Subsidy is cut in half every 210,000 blocks which will occur
@@ -1372,8 +1371,8 @@ bool CheckTxInputs(const CTransaction &tx, CValidationState &state,
         return state.Invalid(false, 0, "", "Inputs unavailable");
     }
 
-    Amount nValueIn = 0;
-    Amount nFees = 0;
+    Amount nValueIn(0);
+    Amount nFees(0);
     for (size_t i = 0; i < tx.vin.size(); i++) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin &coin = inputs.AccessCoin(prevout);
@@ -1391,7 +1390,7 @@ bool CheckTxInputs(const CTransaction &tx, CValidationState &state,
         }
 
         // Check for negative or overflow input values
-        nValueIn += coin.GetTxOut().nValue.GetSatoshis();
+        nValueIn += coin.GetTxOut().nValue;
         if (!MoneyRange(coin.GetTxOut().nValue) || !MoneyRange(nValueIn)) {
             return state.DoS(100, false, REJECT_INVALID,
                              "bad-txns-inputvalues-outofrange");
@@ -1402,12 +1401,12 @@ bool CheckTxInputs(const CTransaction &tx, CValidationState &state,
         return state.DoS(
             100, false, REJECT_INVALID, "bad-txns-in-belowout", false,
             strprintf("value in (%s) < value out (%s)", FormatMoney(nValueIn),
-                      FormatMoney(tx.GetValueOut().GetSatoshis())));
+                      FormatMoney(tx.GetValueOut())));
     }
 
     // Tally transaction fees
     Amount nTxFee = nValueIn - tx.GetValueOut();
-    if (nTxFee < 0) {
+    if (nTxFee < Amount(0)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-fee-negative");
     }
     nFees += nTxFee;
@@ -2007,7 +2006,7 @@ static bool ConnectBlock(const Config &config, const CBlock &block,
                                                            : nullptr);
 
     std::vector<int> prevheights;
-    Amount nFees = 0;
+    Amount nFees(0);
     int nInputs = 0;
 
     // Sigops counting. We need to do it again because of P2SH.
@@ -2066,7 +2065,7 @@ static bool ConnectBlock(const Config &config, const CBlock &block,
 
         if (!tx.IsCoinBase()) {
             Amount fee = view.GetValueIn(tx) - tx.GetValueOut();
-            nFees += fee.GetSatoshis();
+            nFees += fee;
 
             // Don't cache results if we're actually connecting blocks (still
             // consult the cache, though).
@@ -4941,8 +4940,8 @@ bool LoadMempool(const Config &config) {
             file >> nTime;
             file >> nFeeDelta;
 
-            Amount amountdelta = nFeeDelta;
-            if (amountdelta != 0) {
+            Amount amountdelta(nFeeDelta);
+            if (amountdelta != Amount(0)) {
                 mempool.PrioritiseTransaction(tx->GetId(),
                                               tx->GetId().ToString(),
                                               prioritydummy, amountdelta);
@@ -4991,7 +4990,7 @@ void DumpMempool(void) {
     {
         LOCK(mempool.cs);
         for (const auto &i : mempool.mapDeltas) {
-            mapDeltas[i.first] = i.second.second.GetSatoshis();
+            mapDeltas[i.first] = i.second.second;
         }
         vinfo = mempool.infoAll();
     }

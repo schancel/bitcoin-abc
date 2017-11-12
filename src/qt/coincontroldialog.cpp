@@ -449,23 +449,23 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
     if (!model) return;
 
     // nPayAmount
-    CAmount nPayAmount = 0;
+    CAmount nPayAmount(0);
     bool fDust = false;
     CMutableTransaction txDummy;
     for (const CAmount &amount : CoinControlDialog::payAmounts) {
         nPayAmount += amount;
 
         if (amount > 0) {
-            CTxOut txout(amount, (CScript)std::vector<uint8_t>(24, 0));
+            CTxOut txout(Amount(amount), (CScript)std::vector<uint8_t>(24, 0));
             txDummy.vout.push_back(txout);
             if (txout.IsDust(dustRelayFee)) fDust = true;
         }
     }
 
-    CAmount nAmount = 0;
-    CAmount nPayFee = 0;
-    CAmount nAfterFee = 0;
-    CAmount nChange = 0;
+    CAmount nAmount(0);
+    CAmount nPayFee(0);
+    CAmount nAfterFee(0);
+    CAmount nChange(0);
     unsigned int nBytes = 0;
     unsigned int nBytesInputs = 0;
     double dPriority = 0;
@@ -535,7 +535,7 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
         // Fee
         nPayFee = CWallet::GetMinimumFee(nBytes, nTxConfirmTarget, mempool)
                       .GetSatoshis();
-        if (nPayFee > 0 && coinControl->nMinimumTotalFee > nPayFee)
+        if (nPayFee > 0 && coinControl->nMinimumTotalFee.GetSatoshis() > nPayFee)
             nPayFee = coinControl->nMinimumTotalFee.GetSatoshis();
 
         // Allow free? (require at least hard-coded threshold and default to
@@ -560,8 +560,8 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
 
             // Never create dust outputs; if we would, just add the dust to the
             // fee.
-            if (nChange > 0 && nChange < MIN_CHANGE) {
-                CTxOut txout(nChange, (CScript)std::vector<uint8_t>(24, 0));
+            if (nChange > 0 && nChange < MIN_CHANGE.GetSatoshis()) {
+                CTxOut txout(Amount(nChange), (CScript)std::vector<uint8_t>(24, 0));
                 if (txout.IsDust(dustRelayFee)) {
                     // dust-change will be raised until no dust
                     if (CoinControlDialog::fSubtractFeeFromAmount) {
@@ -622,7 +622,7 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog *dialog) {
     l7->setText(fDust ? tr("yes") : tr("no"));
     // Change
     l8->setText(BitcoinUnits::formatWithUnit(nDisplayUnit, nChange));
-    if (nPayFee > 0 && (coinControl->nMinimumTotalFee < nPayFee)) {
+    if (nPayFee > 0 && (coinControl->nMinimumTotalFee.GetSatoshis() < nPayFee)) {
         l3->setText(ASYMP_UTF8 + l3->text());
         l4->setText(ASYMP_UTF8 + l4->text());
         if (nChange > 0 && !CoinControlDialog::fSubtractFeeFromAmount) {
@@ -725,7 +725,7 @@ void CoinControlDialog::updateView() {
             itemWalletAddress->setText(COLUMN_ADDRESS, sWalletAddress);
         }
 
-        CAmount nSum = 0;
+        CAmount nSum(0);
         int nChildren = 0;
         for (const COutput &out : coins.second) {
             nSum += out.tx->tx->vout[out.i].nValue.GetSatoshis();

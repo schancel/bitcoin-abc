@@ -57,7 +57,7 @@ WalletModel::~WalletModel() {
 
 CAmount WalletModel::getBalance(const CCoinControl *coinControl) const {
     if (coinControl) {
-        Amount nBalance = 0;
+        Amount nBalance(0);
         std::vector<COutput> vCoins;
         wallet->AvailableCoins(vCoins, true, coinControl);
         for (const COutput &out : vCoins) {
@@ -125,9 +125,9 @@ void WalletModel::checkBalanceChanged() {
     CAmount newBalance = getBalance();
     CAmount newUnconfirmedBalance = getUnconfirmedBalance();
     CAmount newImmatureBalance = getImmatureBalance();
-    CAmount newWatchOnlyBalance = 0;
-    CAmount newWatchUnconfBalance = 0;
-    CAmount newWatchImmatureBalance = 0;
+    CAmount newWatchOnlyBalance(0);
+    CAmount newWatchUnconfBalance(0);
+    CAmount newWatchImmatureBalance(0);
     if (haveWatchOnly()) {
         newWatchOnlyBalance = getWatchBalance();
         newWatchUnconfBalance = getWatchUnconfirmedBalance();
@@ -176,7 +176,7 @@ bool WalletModel::validateAddress(const QString &address) {
 WalletModel::SendCoinsReturn
 WalletModel::prepareTransaction(WalletModelTransaction &transaction,
                                 const CCoinControl *coinControl) {
-    CAmount total = 0;
+    CAmount total(0);
     bool fSubtractFeeFromAmount = false;
     QList<SendCoinsRecipient> recipients = transaction.getRecipients();
     std::vector<CRecipient> vecSend;
@@ -195,7 +195,7 @@ WalletModel::prepareTransaction(WalletModelTransaction &transaction,
 
         // PaymentRequest...
         if (rcp.paymentRequest.IsInitialized()) {
-            CAmount subtotal = 0;
+            CAmount subtotal(0);
             const payments::PaymentDetails &details =
                 rcp.paymentRequest.getDetails();
             for (int i = 0; i < details.outputs_size(); i++) {
@@ -206,7 +206,7 @@ WalletModel::prepareTransaction(WalletModelTransaction &transaction,
                 CScript scriptPubKey(scriptStr,
                                      scriptStr + out.script().size());
                 CAmount nAmount = out.amount();
-                CRecipient recipient = {scriptPubKey, nAmount,
+                CRecipient recipient = {scriptPubKey, Amount(nAmount),
                                         rcp.fSubtractFeeFromAmount};
                 vecSend.push_back(recipient);
             }
@@ -226,7 +226,7 @@ WalletModel::prepareTransaction(WalletModelTransaction &transaction,
 
             CScript scriptPubKey = GetScriptForDestination(
                 DecodeDestination(rcp.address.toStdString()));
-            CRecipient recipient = {scriptPubKey, rcp.amount,
+            CRecipient recipient = {scriptPubKey, Amount(rcp.amount),
                                     rcp.fSubtractFeeFromAmount};
             vecSend.push_back(recipient);
 
@@ -248,7 +248,7 @@ WalletModel::prepareTransaction(WalletModelTransaction &transaction,
 
         transaction.newPossibleKeyChange(wallet);
 
-        Amount nFeeRequired = 0;
+        Amount nFeeRequired(0);
         int nChangePosRet = -1;
         std::string strFailReason;
 

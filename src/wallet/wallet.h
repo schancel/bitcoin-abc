@@ -301,7 +301,8 @@ public:
         Init(pwalletIn);
     }
 
-    void Init(const CWallet *pwalletIn) {
+    void Init(const CWallet *pwalletIn)
+     {
         pwallet = pwalletIn;
         mapValue.clear();
         vOrderForm.clear();
@@ -319,15 +320,15 @@ public:
         fImmatureWatchCreditCached = false;
         fAvailableWatchCreditCached = false;
         fChangeCached = false;
-        nDebitCached = 0;
-        nCreditCached = 0;
-        nImmatureCreditCached = 0;
-        nAvailableCreditCached = 0;
-        nWatchDebitCached = 0;
-        nWatchCreditCached = 0;
-        nAvailableWatchCreditCached = 0;
-        nImmatureWatchCreditCached = 0;
-        nChangeCached = 0;
+        nDebitCached = Amount(0);
+        nCreditCached = Amount(0);
+        nImmatureCreditCached = Amount(0);
+        nAvailableCreditCached = Amount(0);
+        nWatchDebitCached = Amount(0);
+        nWatchCreditCached = Amount(0);
+        nAvailableWatchCreditCached = Amount(0);
+        nImmatureWatchCreditCached = Amount(0);
+        nChangeCached = Amount(0);
         nOrderPos = -1;
     }
 
@@ -411,7 +412,7 @@ public:
                            const isminefilter &filter) const;
 
     bool IsFromMe(const isminefilter &filter) const {
-        return (GetDebit(filter) > 0);
+        return (GetDebit(filter) > Amount(0));
     }
 
     // True if only scriptSigs are different
@@ -492,7 +493,7 @@ public:
     CAccountingEntry() { SetNull(); }
 
     void SetNull() {
-        nCreditDebit = 0;
+        nCreditDebit = Amount(0);
         nTime = 0;
         strAccount.clear();
         strOtherAccount.clear();

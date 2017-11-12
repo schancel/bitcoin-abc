@@ -204,7 +204,7 @@ bool SignSignature(const CKeyStore &keystore, const CTransaction &txFrom,
     const CTxOut &txout = txFrom.vout[txin.prevout.n];
 
     return SignSignature(keystore, txout.scriptPubKey, txTo, nIn,
-                         txout.nValue.GetSatoshis(), nHashType);
+                         txout.nValue, nHashType);
 }
 
 static std::vector<valtype> CombineMultisig(

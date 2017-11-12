@@ -395,7 +395,7 @@ static void MutateTxAddOutMultiSig(CMutableTransaction &tx,
 
 static void MutateTxAddOutData(CMutableTransaction &tx,
                                const std::string &strInput) {
-    Amount value = 0;
+    Amount value(0);
 
     // separate [VALUE:]DATA in string
     size_t pos = strInput.find(':');
@@ -634,7 +634,7 @@ static void MutateTxSign(CMutableTransaction &tx, const std::string &flagStr) {
 
             CTxOut txout;
             txout.scriptPubKey = scriptPubKey;
-            txout.nValue = 0;
+            txout.nValue = Amount(0);
             if (prevOut.exists("amount")) {
                 txout.nValue = AmountFromValue(prevOut["amount"]);
             }
@@ -676,7 +676,7 @@ static void MutateTxSign(CMutableTransaction &tx, const std::string &flagStr) {
         if (!fHashSingle || (i < mergedTx.vout.size())) {
             ProduceSignature(
                 MutableTransactionSignatureCreator(
-                    &keystore, &mergedTx, i, amount.GetSatoshis(), nHashType),
+                    &keystore, &mergedTx, i, amount, nHashType),
                 prevPubKey, sigdata);
         }
 
@@ -684,7 +684,7 @@ static void MutateTxSign(CMutableTransaction &tx, const std::string &flagStr) {
         for (const CTransaction &txv : txVariants) {
             sigdata = CombineSignatures(prevPubKey,
                                         MutableTransactionSignatureChecker(
-                                            &mergedTx, i, amount.GetSatoshis()),
+                                            &mergedTx, i, amount),
                                         sigdata, DataFromTransaction(txv, i));
         }
 
@@ -693,7 +693,7 @@ static void MutateTxSign(CMutableTransaction &tx, const std::string &flagStr) {
         if (!VerifyScript(txin.scriptSig, prevPubKey,
                           STANDARD_SCRIPT_VERIFY_FLAGS,
                           MutableTransactionSignatureChecker(
-                              &mergedTx, i, amount.GetSatoshis()))) {
+                              &mergedTx, i, amount))) {
             fComplete = false;
         }
     }

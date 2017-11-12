@@ -218,7 +218,7 @@ void TxToUniv(const CTransaction &tx, const uint256 &hashBlock,
         UniValue out(UniValue::VOBJ);
 
         UniValue outValue(UniValue::VNUM,
-                          FormatMoney(txout.nValue.GetSatoshis()));
+                          FormatMoney(txout.nValue));
         out.pushKV("value", outValue);
         out.pushKV("n", (int64_t)i);
 
