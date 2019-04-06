@@ -67,7 +67,7 @@ int64_t UpdateTime(CBlockHeader *pblock, const Config &config,
     return nNewTime - nOldTime;
 }
 
-static uint64_t ComputeMaxGeneratedBlockSize(const Config &config,
+uint64_t ComputeMaxGeneratedBlockSize(const Config &config,
                                              const CBlockIndex *pindexPrev) {
     // Block resource limits
     // If -blockmaxsize is not given, limit to DEFAULT_MAX_GENERATED_BLOCK_SIZE
