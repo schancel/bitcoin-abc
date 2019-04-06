@@ -234,4 +234,12 @@ void IncrementExtraNonce(const Config &config, CBlock *pblock,
                          unsigned int &nExtraNonce);
 int64_t UpdateTime(CBlockHeader *pblock, const Config &config,
                    const CBlockIndex *pindexPrev);
+
+/**
+ * Compute a sane max generated block size within the current chain context
+ * @param[in] config        Bitcoin-ABC configuration object
+ * @param[in] pindexPrev    Current chain tip we are mining on.
+ */
+uint64_t ComputeMaxGeneratedBlockSize(const Config &config,
+                                      const CBlockIndex *pindexPrev);
 #endif // BITCOIN_MINER_H
