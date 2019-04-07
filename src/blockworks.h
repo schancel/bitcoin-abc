@@ -18,6 +18,8 @@
 #include <memory>
 #include <vector>
 
+class CTxMemPoolEntry;
+
 class Blockworks {
 private:
     mutable boost::shared_mutex rwlock;
@@ -42,8 +44,14 @@ private:
 public:
     Blockworks(const Config &_config, CBlockIndex *pindexPrev);
 
+    /** Add a mempool entry to the currently being constructed block */
+    bool AddToBlock(const CTxMemPoolEntry &entry);
+
     /** Construct a new block template with coinbase to scriptPubKeyIn */
     std::unique_ptr<CBlock> GetBlock(const CScript &scriptPubKeyIn);
+private:
+    /** Test to see if a transaction can be validly added to the block */
+    bool TestTransaction(const CTxMemPoolEntry &entry);
 };
 
 
