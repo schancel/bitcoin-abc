@@ -8,11 +8,13 @@
 #include "config.h"
 #include "chainparams.h"
 #include "consensus/validation.h"
+#include "consensus/tx_verify.h"
 #include "logging.h"
 #include "miner.h"
 #include "policy/policy.h"
 #include "primitives/block.h"
 #include "timedata.h"
+#include "txmempool.h"
 #include "utiltime.h"
 #include "util.h"
 #include "validation.h"
@@ -40,6 +42,42 @@ Blockworks::Blockworks(const Config &_config, CBlockIndex *_pindexPrev)
     nLockTimeCutoff = 0;
     nMedianTimePast = 0;
     nMaxGeneratedBlockSize = DEFAULT_MAX_GENERATED_BLOCK_SIZE;
+}
+
+bool Blockworks::AddToBlock(const CTxMemPoolEntry &entry) {
+    if(!TestTransaction(entry)) {
+        return false;
+    }
+
+    entries.emplace_back(entry.GetSharedTx(), entry.GetFee(), entry.GetSigOpCount());
+    nBlockSize += entry.GetTxSize();
+    ++nBlockTx;
+    nBlockSigOps += entry.GetSigOpCount();
+    nFees += entry.GetFee();
+}
+
+bool Blockworks::TestTransaction(const CTxMemPoolEntry &entry) {
+    auto blockSizeWithTx = nBlockSize + entry.GetTxSize();
+    if (blockSizeWithTx >= nMaxGeneratedBlockSize) {
+        return false;
+    }
+    // Acquire write access to block;
+    boost::unique_lock< boost::shared_mutex > lock(rwlock);
+
+    auto maxBlockSigOps = GetMaxBlockSigOpsCount(blockSizeWithTx);
+    if (nBlockSigOps + entry.GetSigOpCount() >= maxBlockSigOps) {
+        return false;
+    }
+
+    // Must check that lock times are still valid. This can be removed once MTP
+    // is always enforced as long as reorgs keep the mempool consistent.
+    CValidationState state;
+    if (!ContextualCheckTransaction(*config, entry.GetTx(), state, nHeight,
+                                    nLockTimeCutoff, nMedianTimePast)) {
+        return false;
+    }
+
+    return true;
 }
 
 std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
