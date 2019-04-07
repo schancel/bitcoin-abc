@@ -240,6 +240,7 @@ libbitcoin_server_a_SOURCES = \
   bloom.cpp \
   blockencodings.cpp \
   blockfilter.cpp \
+  blockworks.cpp \
   chain.cpp \
   checkpoints.cpp \
   config.cpp \
