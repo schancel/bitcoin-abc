@@ -3006,6 +3006,9 @@ bool CChainState::ActivateBestChain(const Config &config,
         }
     } while (pindexNewTip != pindexMostWork);
 
+    // TODO: g_mempool.NewTip(pindexNewTip);
+    // We need to hook in here to know when to start adding mempool transactions into the new block template.
+
     const CChainParams &params = config.GetChainParams();
     CheckBlockIndex(params.GetConsensus());
 
