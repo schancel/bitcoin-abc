@@ -420,18 +420,6 @@ bool BlockAssembler::SkipMapTxEntry(
     return mapModifiedTx.count(it) || inBlock.count(it) || failedTx.count(it);
 }
 
-void BlockAssembler::SortForBlock(
-    const CTxMemPool::setEntries &package, CTxMemPool::txiter entry,
-    std::vector<CTxMemPool::txiter> &sortedEntries) {
-    // Sort package by ancestor count. If a transaction A depends on transaction
-    // B, then A's ancestor count must be greater than B's. So this is
-    // sufficient to validly order the transactions for block inclusion.
-    sortedEntries.clear();
-    sortedEntries.insert(sortedEntries.begin(), package.begin(), package.end());
-    std::sort(sortedEntries.begin(), sortedEntries.end(),
-              CompareTxIterByAncestorCount());
-}
-
 /**
  * addPackageTx includes transactions paying a fee by ensuring that
  * the partial ordering of transactions is maintained.  That is to say
@@ -567,12 +555,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
 
         // This transaction will make it in; reset the failed counter.
         nConsecutiveFailed = 0;
-
-        // Package can be added. Sort the entries in a valid order.
-        std::vector<CTxMemPool::txiter> sortedEntries;
-        SortForBlock(ancestors, iter, sortedEntries);
-
-        for (auto &entry : sortedEntries) {
+        for (auto &entry : ancestors) {
             AddToBlock(entry);
             // Erase from the modified set, if present
             mapModifiedTx.erase(entry);
