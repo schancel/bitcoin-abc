@@ -11,6 +11,7 @@
 #include "config.h"
 #include "primitives/block.h"
 #include "primitives/transaction.h"
+#include "miner.h"
 
 #include <boost/thread/locks.hpp>
 #include <boost/thread/shared_mutex.hpp>
@@ -18,13 +19,14 @@
 #include <memory>
 #include <vector>
 
-class CTxMemPoolEntry;
+// class CTxMemPoolEntry;
 
 class Blockworks {
 private:
     mutable boost::shared_mutex rwlock;
 
     CBlockIndex *pindexPrev;
+    std::vector<CBlockTemplateEntry> entries;
 
     // Configuration parameters for the block size
     uint64_t nMaxGeneratedBlockSize;
