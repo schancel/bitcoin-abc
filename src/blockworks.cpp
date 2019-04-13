@@ -54,6 +54,7 @@ bool Blockworks::AddToBlock(const CTxMemPoolEntry &entry) {
     ++nBlockTx;
     nBlockSigOps += entry.GetSigOpCount();
     nFees += entry.GetFee();
+    return true;
 }
 
 bool Blockworks::TestTransaction(const CTxMemPoolEntry &entry) {
@@ -163,3 +164,64 @@ std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
 
     return pblock;
 }
+
+static void BuildBlock(CTxMemPool &mpool) {
+    {
+        LOCK2(cs_main, mpool.cs);
+
+
+    }
+}
+
+class BlockEntry {
+public:
+    CTransactionRef tx;
+    //!< Cached to avoid expensive parent-transaction lookups
+    Amount nFee;
+    //!< ... and avoid recomputing tx size
+    size_t nTxSize;
+    //!< ... and billable size for billing
+    size_t nTxBillableSize;
+    //!< ... and modified size for priority
+    size_t nModSize;
+    //!< ... and total memory usage
+    size_t nUsageSize;
+    //!< Local time when entering the mempool
+    int64_t nTime;
+    //!< Priority when entering the mempool
+    double entryPriority;
+    //!< Chain height when entering the mempool
+    unsigned int entryHeight;
+    //!< Sum of all txin values that are already in blockchain
+    Amount inChainInputValue;
+    //!< keep track of transactions that spend a coinbase
+    bool spendsCoinbase;
+    //!< Total sigop plus P2SH sigops count
+    int64_t sigOpCount;
+    //!< Used for determining the priority of the transaction for mining in a
+    //! block
+    Amount feeDelta;
+    //!< Track the height and time at which tx was final
+    LockPoints lockPoints;
+
+    // Information about descendants of this transaction that are in the
+    // mempool; if we remove this transaction we must remove all of these
+    // descendants as well.  if nCountWithDescendants is 0, treat this entry as
+    // dirty, and nSizeWithDescendants and nModFeesWithDescendants will not be
+    // correct.
+    //!< number of descendant transactions
+    uint64_t nCountWithDescendants;
+    //!< ... and size
+    uint64_t nSizeWithDescendants;
+    uint64_t nBillableSizeWithDescendants;
+
+    //!< ... and total fees (all including us)
+    Amount nModFeesWithDescendants;
+
+    // Analogous statistics for ancestor transactions
+    uint64_t nCountWithAncestors;
+    uint64_t nSizeWithAncestors;
+    uint64_t nBillableSizeWithAncestors;
+    Amount nModFeesWithAncestors;
+    int64_t nSigOpCountWithAncestors;
+};

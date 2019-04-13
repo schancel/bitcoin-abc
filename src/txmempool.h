@@ -351,6 +351,9 @@ struct descendant_score {};
 struct entry_time {};
 struct mining_score {};
 struct ancestor_score {};
+struct txid_index {};
+struct insertion_order {};
+
 
 /**
  * Information about a mempool transaction.
@@ -532,7 +535,10 @@ public:
                              boost::multi_index::ordered_non_unique<
                                  boost::multi_index::tag<ancestor_score>,
                                  boost::multi_index::identity<CTxMemPoolEntry>,
-                                 CompareTxMemPoolEntryByAncestorFee>>>
+                                 CompareTxMemPoolEntryByAncestorFee>,
+                            // sorted by order in the blockchain
+                             boost::multi_index::sequenced<
+                                 boost::multi_index::tag<insertion_order>>>>
         indexed_transaction_set;
 
     mutable CCriticalSection cs;
@@ -839,9 +845,6 @@ struct TxCoinAgePriorityCompare {
  * when (de)activating forks that result in in-mempool transactions becoming
  * invalid
  */
-// multi_index tag names
-struct txid_index {};
-struct insertion_order {};
 
 class DisconnectedBlockTransactions {
 private:
