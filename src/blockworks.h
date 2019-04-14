@@ -19,7 +19,51 @@
 #include <memory>
 #include <vector>
 
-// class CTxMemPoolEntry;
+// Keep track of transactions to-be-added added to a block, and some various metadata.
+struct BlockEntry {
+public:
+    CTransactionRef tx;
+    //!< Cached to avoid expensive parent-transaction lookups
+    Amount txFee;
+    //!< ... and avoid recomputing tx size
+    size_t txSize;
+    //!< ... Track number of sigops
+    uint64_t txSigOps;
+
+    //!< Track the height and time at which tx was final
+    LockPoints lockPoints;
+
+    //!< Track information about the package
+    uint64_t packageCount;
+    Amount packageFee;
+    size_t packageSize;
+    uint64_t packageSigOps;
+
+
+    BlockEntry(CTransactionRef _tx, Amount _fees, uint64_t _size, int64_t _sigOps) 
+    : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps),
+      packageCount(1), packageFee(_fees), packageSize(_size), packageSigOps(_sigOps)
+    { }
+
+    // Calculate the feerate for this transaction.  Use the minimum of the package feerate,
+    // or the transaction itself.  Parents TXNs should never end up "paying for" child transactions.
+    CFeeRate FeeRate() const {
+        return int64_t(txSize) * packageFee < int64_t(packageSize) * txFee ?
+            CFeeRate(packageFee, packageSize) :  CFeeRate(txFee, txSize);
+    }
+
+private:
+    // Include a parent transactions accounting into our own.
+    // We assume that this is used in topological order by Blockworks.
+    void AccountForParent(BlockEntry &parent) {
+        packageCount += parent.packageCount;
+        packageFee += parent.packageFee;
+        packageSize += parent.packageSize;
+        packageSigOps += parent.packageSigOps;
+    }
+
+    friend class Blockworks;
+};
 
 class Blockworks {
 private:
@@ -49,8 +93,11 @@ public:
     /** Add a mempool entry to the currently being constructed block */
     bool AddToBlock(const CTxMemPoolEntry &entry);
 
-    /** Construct a new block template with coinbase to scriptPubKeyIn */
-    std::unique_ptr<CBlock> GetBlock(const CScript &scriptPubKeyIn);
+    /** Construct a new empty block with coinbase to scriptPubKeyIn */
+    std::unique_ptr<CBlock> GetBlock(std::unique_ptr<CBlock>, const CScript &scriptPubKeyIn);
+
+    void AddTransactionsToBlock(CTxMemPool &mempool);
+
 private:
     /** Test to see if a transaction can be validly added to the block */
     bool TestTransaction(const CTxMemPoolEntry &entry);
