@@ -38,9 +38,12 @@ Blockworks::Blockworks(const Config &_config, CBlockIndex *_pindexPrev)
     nBlockTx = 0;
     nFees = Amount::zero();
 
-    nHeight = 0;
-    nLockTimeCutoff = 0;
-    nMedianTimePast = 0;
+    nHeight = pindexPrev->nHeight + 1;
+    nMedianTimePast = pindexPrev->GetMedianTimePast();
+    nLockTimeCutoff = (STANDARD_LOCKTIME_VERIFY_FLAGS & LOCKTIME_MEDIAN_TIME_PAST)
+            ? nMedianTimePast
+            : GetAdjustedTime();
+
     nMaxGeneratedBlockSize = DEFAULT_MAX_GENERATED_BLOCK_SIZE;
 }
 
@@ -92,8 +95,6 @@ std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
     // Add dummy coinbase tx as first transaction. It is updated at the end.
     pblock->vtx.emplace_back(CTransactionRef());
     
-    nHeight = pindexPrev->nHeight + 1;
-
     pblock->nVersion =
         ComputeBlockVersion(pindexPrev, chainparams.GetConsensus());
     // -regtest only: allow overriding block.nVersion with
@@ -165,63 +166,81 @@ std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
     return pblock;
 }
 
-static void BuildBlock(CTxMemPool &mpool) {
-    {
-        LOCK2(cs_main, mpool.cs);
-
-
-    }
-}
-
-class BlockEntry {
+// Keep track of transactions to-be-added added to a block, and some various metadata.
+struct BlockEntry {
 public:
     CTransactionRef tx;
     //!< Cached to avoid expensive parent-transaction lookups
-    Amount nFee;
+    Amount fee;
     //!< ... and avoid recomputing tx size
-    size_t nTxSize;
-    //!< ... and billable size for billing
-    size_t nTxBillableSize;
-    //!< ... and modified size for priority
-    size_t nModSize;
-    //!< ... and total memory usage
-    size_t nUsageSize;
-    //!< Local time when entering the mempool
-    int64_t nTime;
-    //!< Priority when entering the mempool
-    double entryPriority;
-    //!< Chain height when entering the mempool
-    unsigned int entryHeight;
-    //!< Sum of all txin values that are already in blockchain
-    Amount inChainInputValue;
-    //!< keep track of transactions that spend a coinbase
-    bool spendsCoinbase;
-    //!< Total sigop plus P2SH sigops count
-    int64_t sigOpCount;
-    //!< Used for determining the priority of the transaction for mining in a
-    //! block
-    Amount feeDelta;
+    size_t txSize;
+    //!< ... Track number of sigops
+    uint64_t sigOps;
+
     //!< Track the height and time at which tx was final
     LockPoints lockPoints;
 
-    // Information about descendants of this transaction that are in the
-    // mempool; if we remove this transaction we must remove all of these
-    // descendants as well.  if nCountWithDescendants is 0, treat this entry as
-    // dirty, and nSizeWithDescendants and nModFeesWithDescendants will not be
-    // correct.
-    //!< number of descendant transactions
-    uint64_t nCountWithDescendants;
-    //!< ... and size
-    uint64_t nSizeWithDescendants;
-    uint64_t nBillableSizeWithDescendants;
+    //!< Track information about the package
+    uint64_t packageCount;
+    Amount packageFee;
+    size_t packageSize;
+    uint64_t packageSigOps;
 
-    //!< ... and total fees (all including us)
-    Amount nModFeesWithDescendants;
 
-    // Analogous statistics for ancestor transactions
-    uint64_t nCountWithAncestors;
-    uint64_t nSizeWithAncestors;
-    uint64_t nBillableSizeWithAncestors;
-    Amount nModFeesWithAncestors;
-    int64_t nSigOpCountWithAncestors;
+    BlockEntry(CTransactionRef _tx, Amount _fees, uint64_t _txSize, int64_t _sigOps) 
+    : tx(_tx), nFee(_fees), txSize(_txSize), sigOps(_sigOps),
+      packageCount(1), packageSize(_txSize), packageSigOps(_sigOps), packageFee(_fees)
+    { }
 };
+
+static void BuildBlock(CTxMemPool &mempool) {
+    std::vector<std::shared_ptr<BlockEntry>> unaddedPool;
+    std::unordered_map<TxId, size_t, SaltedTxidHasher> txLocations;
+    {
+        // Fetch all the transactions in dependency order. O(n)
+        // We want a copy quickly so we can release the mempool lock ASAP.
+        LOCK2(cs_main, mempool.cs);
+        size_t idx = 0;
+        for(const auto &mempoolEntry : mempool.mapTx.get<insertion_order>()) {
+            const CTransactionRef tx = mempoolEntry.GetSharedTx();
+            unaddedPool.emplace_back(mempoolEntry.GetTx(), mempoolEntry.GetFee(), mempoolEntry.GetTxSize() );
+            txLocations[tx->GetId()] = idx;
+            idx += 1;
+        }
+    }
+
+    // Figure out how many parents transactions have.  O(n + m)
+    // All the dependencies of a transaction appear before the transaction.
+    // So we can iterate forward, and simply add all the parents dependency count to our count.
+    // Note: If there is a diamond shaped inheritance, we will multi-count.
+    // We don't care.
+    // We will still maintain an invarent that children come after parents when sorting by the value we calculate here.
+    std::unordered_set<TxId, SaltedTxidHasher> seen;
+    for( const auto entry : unaddedPool ) {
+        // Clear out seen list, for the next transaction.
+        seen.clear();
+        for (const auto &txIn : entry->tx->vin ) {
+            const TxId &parentId = txIn.prevout.GetTxId();
+            if(seen.count(parentId) != 0) {
+                continue;
+            }
+            seen.insert(parentId);
+            auto it = txLocations.find(parentId);
+            if( it == txLocations.end()) {
+                // Confirmed parent transaction
+                // (We know this because the mempool we have was guaranteed to be consistent)
+                continue;
+            }
+
+            // Add our parents to us.
+            entry->packageCount += unaddedPool[it->second]->packageCount;
+        }
+    }
+
+    // Now sort them by package feeRate
+    std::sort(unaddedPool.begin(), unaddedPool.end(), [](const BlockEntry& a, const BlockEntry &b) {
+        auto aFee = a.packageFee / int64_t(a.packageSize) < a.fee / int64_t(a.packageSize)
+
+        return GetFee<false>(a.packageSize) 
+    });
+}
