@@ -169,15 +169,14 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated);
 
-    if (IsMagneticAnomalyEnabled(*config, pindexPrev)) {
-        // If magnetic anomaly is enabled, we make sure transaction are
-        // canonically ordered.
-        // FIXME: Use a zipped list. See T479
-        std::sort(std::begin(pblocktemplate->entries) + 1,
-                  std::end(pblocktemplate->entries),
-                  [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b)
-                      -> bool { return a.tx->GetId() < b.tx->GetId(); });
-    }
+    // Make sure transaction are canonically ordered.
+    // FIXME: Use a zipped list. See T479
+    std::sort(
+        std::begin(pblocktemplate->entries) + 1,
+        std::end(pblocktemplate->entries),
+        [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b) -> bool {
+            return a.tx->GetId() < b.tx->GetId();
+        });
 
     int64_t nTime1 = GetTimeMicros();
 
