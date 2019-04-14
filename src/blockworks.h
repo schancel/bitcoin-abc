@@ -65,12 +65,19 @@ private:
     friend class Blockworks;
 };
 
+struct BlockCandidate {
+    CBlock block;
+
+    std::vector<BlockEntry> entries;
+};
+
 class Blockworks {
 private:
     mutable boost::shared_mutex rwlock;
 
     CBlockIndex *pindexPrev;
-    std::vector<CBlockTemplateEntry> entries;
+    std::unique_ptr<BlockCandidate> candidateBlock;
+    CBlock* pblock;
 
     // Configuration parameters for the block size
     uint64_t nMaxGeneratedBlockSize;
@@ -90,17 +97,22 @@ private:
 public:
     Blockworks(const Config &_config, CBlockIndex *pindexPrev);
 
-    /** Add a mempool entry to the currently being constructed block */
-    bool AddToBlock(const CTxMemPoolEntry &entry);
-
     /** Construct a new empty block with coinbase to scriptPubKeyIn */
-    std::unique_ptr<CBlock> GetBlock(std::unique_ptr<CBlock>, const CScript &scriptPubKeyIn);
+    std::unique_ptr<BlockCandidate> GetBlock(const CScript &scriptPubKeyIn);
 
-    void AddTransactionsToBlock(CTxMemPool &mempool);
 
 private:
     /** Test to see if a transaction can be validly added to the block */
-    bool TestTransaction(const CTxMemPoolEntry &entry);
+    bool TestTransaction(const BlockEntry &entry);
+
+    /** Add an individual transaction to the block */
+    bool AddToBlock(const BlockEntry &entry);
+
+    /** Add packages to the block */
+    void AddTransactionsToBlock(CTxMemPool &mempool);
+
+    /** Reset internal state */
+    void resetBlock();
 };
 
 
