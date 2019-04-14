@@ -238,7 +238,7 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
                 continue;
             }
 
-            // Add the parent to us.
+            // Add the parent data to this transaction
             entry.AccountForParent(txPool[it->second]);
         }
     }
