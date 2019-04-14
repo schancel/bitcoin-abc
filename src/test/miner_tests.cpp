@@ -13,6 +13,7 @@
 #include "consensus/tx_verify.h"
 #include "consensus/validation.h"
 #include "policy/policy.h"
+#include "primitives/txid.h"
 #include "pubkey.h"
 #include "script/standard.h"
 #include "txmempool.h"
@@ -89,8 +90,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     // these 3 tests assume blockprioritypercentage is 0.
     config.SetBlockPriorityPercentage(0);
 
-    // Test that a medium fee transaction will be selected after a higher fee
-    // rate package with a low fee rate parent.
+    // Test that despite dependency ordering, that the block ordering is
     CMutableTransaction tx;
     tx.vin.resize(1);
     tx.vin[0].scriptSig = CScript() << OP_1;
@@ -126,9 +126,12 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
 
     std::unique_ptr<CBlockTemplate> pblocktemplate =
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_CHECK(pblocktemplate->block.vtx[1]->GetId() == parentTxId);
-    BOOST_CHECK(pblocktemplate->block.vtx[2]->GetId() == highFeeTxId);
-    BOOST_CHECK(pblocktemplate->block.vtx[3]->GetId() == mediumFeeTxId);
+    TxId lastId = (pblocktemplate->block.vtx.begin() + 1)->get()->GetId();
+    for (std::vector<CTransactionRef>::const_iterator it =
+             pblocktemplate->block.vtx.begin() + 2;
+         it != pblocktemplate->block.vtx.end(); it++) {
+        BOOST_CHECK(it->get()->GetId() >= lastId);
+    }
 
     // Test that a package below the block min tx fee doesn't get included
     tx.vin[0].prevout = COutPoint(highFeeTxId, 0);
@@ -166,8 +169,12 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
                            entry.Fee(feeToUse + 2 * SATOSHI).FromTx(tx));
     pblocktemplate =
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_CHECK(pblocktemplate->block.vtx[4]->GetId() == freeTxId);
-    BOOST_CHECK(pblocktemplate->block.vtx[5]->GetId() == lowFeeTxId);
+    for (const auto txid : std::vector<TxId>({freeTxId, lowFeeTxId})) {
+        auto it = std::find_if(
+            pblocktemplate->block.vtx.begin(), pblocktemplate->block.vtx.end(),
+            [txid](const CTransactionRef tx) { return tx->GetId() == txid; });
+        BOOST_CHECK(it != pblocktemplate->block.vtx.end());
+    }
 
     // Test that transaction selection properly updates ancestor fee
     // calculations as ancestor transactions get included in a block. Add a
