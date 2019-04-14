@@ -34,6 +34,9 @@ Blockworks::Blockworks(const Config &_config, CBlockIndex *_pindexPrev)
     nBlockSize = 1000;
     nBlockSigOps = 100;
 
+    // How big can we make this block?
+    nMaxGeneratedBlockSize = ComputeMaxGeneratedBlockSize(*config, pindexPrev);
+
     // These counters do not include coinbase tx.
     nBlockTx = 0;
     nFees = Amount::zero();
@@ -43,8 +46,6 @@ Blockworks::Blockworks(const Config &_config, CBlockIndex *_pindexPrev)
     nLockTimeCutoff = (STANDARD_LOCKTIME_VERIFY_FLAGS & LOCKTIME_MEDIAN_TIME_PAST)
             ? nMedianTimePast
             : GetAdjustedTime();
-
-    nMaxGeneratedBlockSize = DEFAULT_MAX_GENERATED_BLOCK_SIZE;
 }
 
 bool Blockworks::AddToBlock(const CTxMemPoolEntry &entry) {
