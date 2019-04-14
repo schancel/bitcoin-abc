@@ -263,23 +263,18 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
             idx += 1;
     }
 
-    std::vector<BlockEntry> blockTxns;
-    blockTxns.reserve(txPool.size());
     // Visit all the transactions in package feeRate order, adding them to the block in topological order.
-    // Complexity: O(n + m)
+    // Complexity: O(n + m) (and some change for visiting diamond dependencies multiple times)
+    //      we charge for this as if they were two seperate transactions.
     //
     // Note: we only need to visit every transaction one time.
-    std::unordered_set<TxId, SaltedTxidHasher> txnsVisited;
+    std::unordered_set<TxId, SaltedTxidHasher> txnsAdded;
     std::unordered_set<TxId, SaltedTxidHasher> txnsInvalid;
 
     for( const auto &entry : txPool ) {
         TxId txId = entry.tx->GetId();
-        if(txnsVisited.count(txId) != 0 || txnsInvalid.count(txId)) {
-            // We know this transaction is either in one of the following:
-            //  1. Confirmed
-            //  2. Added to the block
-            //  3. Invalid
-            // Therefor skip it.
+        // Don't reprocess transactions
+        if(txnsAdded.count(txId) != 0 || txnsInvalid.count(txId) != 0) {
             continue;
         }
        
@@ -292,11 +287,13 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
         auto blockSizeWithTx = nBlockSize + entry.packageSize;
         auto maxBlockSigOps = GetMaxBlockSigOpsCount(blockSizeWithTx);
         if (blockSizeWithTx >= nMaxGeneratedBlockSize) {
+            txnsInvalid.insert(txId);
             goto invalid;
         }
 
         // Check if package sigOps would fit in the block
         if (nBlockSigOps + entry.packageSigOps >= maxBlockSigOps) {
+            txnsInvalid.insert(txId);
             goto invalid;
         }
 
@@ -304,28 +301,43 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
         // We do a DFS incase a transaction fails, and we add them to a stack for popping into the block. 
         while (!ancestorStack.empty()){
             const BlockEntry& ancestor = ancestorStack.top();
-            ancestorStack.pop();
+            const TxId &ancestorId = ancestor.tx->GetId();
 
+            ancestorStack.pop();
+            // Add it to the stack of items we will add once we have checked all the parents.
+            addStack.push(ancestor);
+
+            // Must check that lock times are still valid. This can be removed once MTP
+            // is always enforced as long as reorgs keep the mempool consistent.
+            //
+            // Old code checks the transaction in context.  It doesn't make sense to me though...
+            CValidationState state;
+            if (!ContextualCheckTransaction(*config, *ancestor.tx.get(), state, nHeight,
+                                            nLockTimeCutoff, nMedianTimePast)) {
+                // A parent is invalid, we will need to skip the rest of the transactions
+                // So we don't include (now) invalid child. We will visit them later.
+                // So we can find all it's children during invalid handling.
+                txnsInvalid.insert(ancestorId);
+                goto invalid;
+            }
+
+            // Push all the ancestors on our DFS stack.
             for (const auto &txIn : ancestor.tx->vin ) {
                 const TxId &parentId = txIn.prevout.GetTxId();
-                size_t hasBeenVisited = txnsVisited.count(parentId) != 0;
+                size_t hasBeenAdded = txnsAdded.count(parentId) != 0;
                 size_t isInvalid = txnsInvalid.count(parentId) != 0;
                 if(isInvalid) {
-                    // We have visited the transaction, but it was invalid when handling a previous package
-                    // Goto the invalid txn handling, so that we flag all the children of this transaction
-                    // as invalid as well.
+                    // We must have visited one of the parents before when handling a different package.
+                    // It was invalid, and we need to mark this invalid as well.
+                    txnsInvalid.insert(ancestorId);
                     goto invalid;
                 }
-                if(hasBeenVisited) {
-                    // We know this transaction is already added to the block, or has already been visited
-                    // in the current loop already.
-                    // Therefor skip it.
+                if(hasBeenAdded) {
+                    // Has already been added to the block. We can skip checking it.
                     continue;
                 }
-                // It's okay to visit here, because we're doing a DFS of parents.
-                // If any parent of this transaction fails, we can't add it anyways.
-                // Therefor, we can skip it in the future.
-                txnsVisited.insert(parentId);
+                // Don't yet mark the transaction as visited.  We may need to visit it twice in this loop to ensure
+                // topological ordering when popping off the stack.
 
                 auto it = txLocations.find(parentId);
                 if( it == txLocations.end()) {
@@ -333,38 +345,53 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
                     // (We know this because the mempool we have was guaranteed to be consistent)
                     continue;
                 }
-
                 const BlockEntry& ancestorParent = txPool[it->second];
 
-                // Must check that lock times are still valid. This can be removed once MTP
-                // is always enforced as long as reorgs keep the mempool consistent.
-                //
-                // Old code checks the transaction in context.  It doesn't make sense to me though...
-                CValidationState state;
-                if (!ContextualCheckTransaction(*config, *ancestorParent.tx.get(), state, nHeight,
-                                                nLockTimeCutoff, nMedianTimePast)) {
-                    // A parent is invalid, we will need to skip the rest of the transactions
-                    // So we don't include (now) invalid child. We will visit them later.
-                    goto invalid;
-                }
-                addStack.push(ancestorParent);
+                // Record the parent so we can visit it later.
                 ancestorStack.push(ancestorParent);
             }
         }
         // We know we can add the transaction here.
-        //Every item in the package has passed requirements.
+        // Every item in the package has passed requirements.
         while(!addStack.empty()) {
-            blockTxns.push_back(addStack.top());
+            const BlockEntry &entryToAdd = addStack.top();
+            const TxId &addTxID = entryToAdd.tx->GetId();
+            size_t hasBeenAdded = txnsAdded.count(addTxID) != 0;
+
             addStack.pop();
+            // The addStack can have duplicates, so we need to ensure we don't add
+            // the same transaction twice in this loop.
+            if(hasBeenAdded) {
+                continue;
+            }
+            txnsAdded.insert(addTxID);
+            candidateBlock->entries.emplace_back(entry.tx, entry.txFee, entry.txSize, entry.txSigOps);
+            nBlockSize += entry.txSize;
+            ++nBlockTx;
+            nBlockSigOps += entry.txSigOps;
+            nFees += entry.txFee;
         }
         continue;
 invalid:
+        // Mark all children of the invalid transaction as themselves invalid.
+        // Don't add anything in this package to a block.
         while(!addStack.empty()) {
-            txnsInvalid.insert(addStack.top().get().tx->GetId());
+            const BlockEntry &child = addStack.top();
             addStack.pop();
+            // If we are here, it means we marked one of the parents of an addStack item invalid.
+            // because the stack is in topological order, we can be sure we will mark invalid transactions in order
+            // going all the way back up to the root transaction.
+            for (const auto &txIn : child.tx->vin ) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                size_t isInvalid = txnsInvalid.count(parentId) != 0;
+                if(isInvalid) {
+                    txnsInvalid.insert(child.tx->GetId());
+
+                    // We can stop here, we only need to find one invalid parent to know this is invalid.
+                    break;
+                }
+            }
         }
         continue;
     }
-
-    // TODO:
 }
