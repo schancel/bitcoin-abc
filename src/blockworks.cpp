@@ -18,6 +18,7 @@
 #include "utiltime.h"
 #include "util.h"
 #include "validation.h"
+#include "consensus/activation.h"
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
@@ -147,13 +148,16 @@ std::unique_ptr<BlockCandidate> Blockworks::GetBlock(const CScript &scriptPubKey
     candidateBlock->entries[0].tx = MakeTransactionRef(coinbaseTx);
     candidateBlock->entries[0].txFee = nFees;
 
-
-    // TODO Ensure CTOR
-    //std::sort(std::begin(pblocktemplate->entries) + 1,
-    //      std::end(pblocktemplate->entries),
-    //      [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b)
-    //          -> bool { return a.tx->GetId() < b.tx->GetId(); });
-    //
+    if (IsMagneticAnomalyEnabled(*config, pindexPrev)) {
+        // If magnetic anomaly is enabled, we make sure transaction are
+        // canonically ordered.
+        // FIXME: Use a zipped list. See T479
+        std::sort(std::begin(candidateBlock->entries) + 1,
+                  std::end(candidateBlock->entries),
+                  [](const BlockEntry &a, const BlockEntry &b)
+                      -> bool { return a.tx->GetId() < b.tx->GetId(); });
+    }
+    
 
     int64_t nTime1 = GetTimeMicros();
 
