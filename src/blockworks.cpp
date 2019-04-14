@@ -221,6 +221,7 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
     // Note: If there is a diamond shaped inheritance, we will multi-count.
     // We don't care.
     // We will still maintain an invarent that children come after parents when sorting by the value we calculate here.
+    // And in fact, it's good to double count here, because we will need to visit them twice.
     std::unordered_set<TxId, SaltedTxidHasher> seen;
     for( auto &entry : txPool ) {
         // Clear out seen list, for the next transaction.
