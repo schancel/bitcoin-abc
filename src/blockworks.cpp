@@ -22,6 +22,8 @@
 #include <boost/multi_index_container.hpp>
 
 #include <cstdint>
+#include <queue>
+#include <algorithm>
 #include <memory>
 
 Blockworks::Blockworks(const Config &_config, CBlockIndex *_pindexPrev)
@@ -85,7 +87,7 @@ bool Blockworks::TestTransaction(const CTxMemPoolEntry &entry) {
     return true;
 }
 
-std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
+std::unique_ptr<CBlock> Blockworks::GetBlock(std::unique_ptr<CBlock>, const CScript &scriptPubKeyIn) {
     const CChainParams &chainparams = config->GetChainParams();
     int64_t nTimeStart = GetTimeMicros();
     std::unique_ptr<CBlock> pblock(new CBlock());
@@ -135,7 +137,14 @@ std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
 
     pblock->vtx.push_back(MakeTransactionRef(coinbaseTx));
 
-    // TODO: Add transactions to the block here.
+    AddTransactionsToBlock(g_mempool);
+
+    // TODO Ensure CTOR
+    //std::sort(std::begin(pblocktemplate->entries) + 1,
+    //      std::end(pblocktemplate->entries),
+    //      [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b)
+    //          -> bool { return a.tx->GetId() < b.tx->GetId(); });
+    //
 
     uint64_t nSerializeSize =
         GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION);
@@ -167,60 +176,41 @@ std::unique_ptr<CBlock> Blockworks::GetBlock(const CScript &scriptPubKeyIn) {
     return pblock;
 }
 
-// Keep track of transactions to-be-added added to a block, and some various metadata.
-struct BlockEntry {
-public:
-    CTransactionRef tx;
-    //!< Cached to avoid expensive parent-transaction lookups
-    Amount fee;
-    //!< ... and avoid recomputing tx size
-    size_t txSize;
-    //!< ... Track number of sigops
-    uint64_t sigOps;
+void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
+    std::vector<BlockEntry> txPool;
+    txPool.reserve(txPool.size());
 
-    //!< Track the height and time at which tx was final
-    LockPoints lockPoints;
-
-    //!< Track information about the package
-    uint64_t packageCount;
-    Amount packageFee;
-    size_t packageSize;
-    uint64_t packageSigOps;
-
-
-    BlockEntry(CTransactionRef _tx, Amount _fees, uint64_t _txSize, int64_t _sigOps) 
-    : tx(_tx), nFee(_fees), txSize(_txSize), sigOps(_sigOps),
-      packageCount(1), packageSize(_txSize), packageSigOps(_sigOps), packageFee(_fees)
-    { }
-};
-
-static void BuildBlock(CTxMemPool &mempool) {
-    std::vector<std::shared_ptr<BlockEntry>> unaddedPool;
     std::unordered_map<TxId, size_t, SaltedTxidHasher> txLocations;
+    // Fetch all the transactions in dependency order.
+    // Complexity: O(n)
+    //
+    // We want a copy quickly so we can release the mempool lock ASAP.
     {
-        // Fetch all the transactions in dependency order. O(n)
-        // We want a copy quickly so we can release the mempool lock ASAP.
         LOCK2(cs_main, mempool.cs);
+        txPool.reserve(mempool.mapTx.size());
+
         size_t idx = 0;
         for(const auto &mempoolEntry : mempool.mapTx.get<insertion_order>()) {
             const CTransactionRef tx = mempoolEntry.GetSharedTx();
-            unaddedPool.emplace_back(mempoolEntry.GetTx(), mempoolEntry.GetFee(), mempoolEntry.GetTxSize() );
+            txPool.emplace_back(mempoolEntry.GetSharedTx(), mempoolEntry.GetFee(), mempoolEntry.GetTxSize(), mempoolEntry.GetSigOpCount() );
             txLocations[tx->GetId()] = idx;
             idx += 1;
         }
     }
 
-    // Figure out how many parents transactions have.  O(n + m)
+    // Figure out how many parents transactions have.
+    // Complexity: O(n + m) where n is transactions, and m is edges.
+    //
     // All the dependencies of a transaction appear before the transaction.
     // So we can iterate forward, and simply add all the parents dependency count to our count.
     // Note: If there is a diamond shaped inheritance, we will multi-count.
     // We don't care.
     // We will still maintain an invarent that children come after parents when sorting by the value we calculate here.
     std::unordered_set<TxId, SaltedTxidHasher> seen;
-    for( const auto entry : unaddedPool ) {
+    for( auto &entry : txPool ) {
         // Clear out seen list, for the next transaction.
         seen.clear();
-        for (const auto &txIn : entry->tx->vin ) {
+        for (const auto &txIn : entry.tx->vin ) {
             const TxId &parentId = txIn.prevout.GetTxId();
             if(seen.count(parentId) != 0) {
                 continue;
@@ -233,15 +223,133 @@ static void BuildBlock(CTxMemPool &mempool) {
                 continue;
             }
 
-            // Add our parents to us.
-            entry->packageCount += unaddedPool[it->second]->packageCount;
+            // Add the parent to us.
+            entry.AccountForParent(txPool[it->second]);
         }
     }
 
-    // Now sort them by package feeRate
-    std::sort(unaddedPool.begin(), unaddedPool.end(), [](const BlockEntry& a, const BlockEntry &b) {
-        auto aFee = a.packageFee / int64_t(a.packageSize) < a.fee / int64_t(a.packageSize)
-
-        return GetFee<false>(a.packageSize) 
+    // Now sort them by package feeRate.
+    // Complexity: O(n log n)
+    //
+    // We know that we have optimally sorted feeRates, except for the single 
+    // case where a parent has two children that are paying a high fee.
+    std::sort(txPool.begin(), txPool.end(), [](const BlockEntry &a, const BlockEntry &b) {
+        // We don't care about truncation of fees.  If the client doesn't get a one sat of fees counted, oh well.
+        // The code for avoiding division is atrocious.
+        return a.FeeRate() > b.FeeRate();
     });
+
+    // Update the locations of all the transactions so we can find them again later.
+    // Complexity: O(n + m) where n is transactions, and m is edges.
+    size_t idx = 0;
+    for(const auto &blockEntry : txPool) {
+            const CTransactionRef tx = blockEntry.tx;
+            txLocations[tx->GetId()] = idx;
+            idx += 1;
+    }
+
+    std::vector<BlockEntry> blockTxns;
+    blockTxns.reserve(txPool.size());
+    // Visit all the transactions in package feeRate order, adding them to the block in topological order.
+    // Complexity: O(n + m)
+    //
+    // Note: we only need to visit every transaction one time.
+    std::unordered_set<TxId, SaltedTxidHasher> txnsVisited;
+    std::unordered_set<TxId, SaltedTxidHasher> txnsInvalid;
+
+    for( const auto &entry : txPool ) {
+        TxId txId = entry.tx->GetId();
+        if(txnsVisited.count(txId) != 0 || txnsInvalid.count(txId)) {
+            // We know this transaction is either in one of the following:
+            //  1. Confirmed
+            //  2. Added to the block
+            //  3. Invalid
+            // Therefor skip it.
+            continue;
+        }
+       
+        // Visit and include all the parents in the block, checking if they are valid.
+        std::stack<std::reference_wrapper<const BlockEntry>> ancestorStack;
+        std::stack<std::reference_wrapper<const BlockEntry>> addStack;
+
+        // Check if package size would fit in the block.
+        // We won't need to check it for every ancestor below, because their values are included here already
+        auto blockSizeWithTx = nBlockSize + entry.packageSize;
+        auto maxBlockSigOps = GetMaxBlockSigOpsCount(blockSizeWithTx);
+        if (blockSizeWithTx >= nMaxGeneratedBlockSize) {
+            goto invalid;
+        }
+
+        // Check if package sigOps would fit in the block
+        if (nBlockSigOps + entry.packageSigOps >= maxBlockSigOps) {
+            goto invalid;
+        }
+
+        ancestorStack.push(entry);
+        // We do a DFS incase a transaction fails, and we add them to a stack for popping into the block. 
+        while (!ancestorStack.empty()){
+            const BlockEntry& ancestor = ancestorStack.top();
+            ancestorStack.pop();
+
+            for (const auto &txIn : ancestor.tx->vin ) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                size_t hasBeenVisited = txnsVisited.count(parentId) != 0;
+                size_t isInvalid = txnsInvalid.count(parentId) != 0;
+                if(isInvalid) {
+                    // We have visited the transaction, but it was invalid when handling a previous package
+                    // Goto the invalid txn handling, so that we flag all the children of this transaction
+                    // as invalid as well.
+                    goto invalid;
+                }
+                if(hasBeenVisited) {
+                    // We know this transaction is already added to the block, or has already been visited
+                    // in the current loop already.
+                    // Therefor skip it.
+                    continue;
+                }
+                // It's okay to visit here, because we're doing a DFS of parents.
+                // If any parent of this transaction fails, we can't add it anyways.
+                // Therefor, we can skip it in the future.
+                txnsVisited.insert(parentId);
+
+                auto it = txLocations.find(parentId);
+                if( it == txLocations.end()) {
+                    // Confirmed parent transaction
+                    // (We know this because the mempool we have was guaranteed to be consistent)
+                    continue;
+                }
+
+                const BlockEntry& ancestorParent = txPool[it->second];
+
+                // Must check that lock times are still valid. This can be removed once MTP
+                // is always enforced as long as reorgs keep the mempool consistent.
+                //
+                // Old code checks the transaction in context.  It doesn't make sense to me though...
+                CValidationState state;
+                if (!ContextualCheckTransaction(*config, *ancestorParent.tx.get(), state, nHeight,
+                                                nLockTimeCutoff, nMedianTimePast)) {
+                    // A parent is invalid, we will need to skip the rest of the transactions
+                    // So we don't include (now) invalid child. We will visit them later.
+                    goto invalid;
+                }
+                addStack.push(ancestorParent);
+                ancestorStack.push(ancestorParent);
+            }
+        }
+        // We know we can add the transaction here.
+        //Every item in the package has passed requirements.
+        while(!addStack.empty()) {
+            blockTxns.push_back(addStack.top());
+            addStack.pop();
+        }
+        continue;
+invalid:
+        while(!addStack.empty()) {
+            txnsInvalid.insert(addStack.top().get().tx->GetId());
+            addStack.pop();
+        }
+        continue;
+    }
+
+    // TODO:
 }
