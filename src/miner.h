@@ -26,11 +26,16 @@ static const bool DEFAULT_PRINTPRIORITY = false;
 
 struct CBlockTemplateEntry {
     CTransactionRef tx;
-    Amount fees;
-    int64_t sigOpCount;
+    //!< Cached to avoid expensive parent-transaction lookups
+    Amount txFee;
+    //!< ... and avoid recomputing tx size
+    size_t txSize;
+    //!< ... Track number of sigops
+    uint64_t txSigOps;
 
-    CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, int64_t _sigOpCount)
-        : tx(_tx), fees(_fees), sigOpCount(_sigOpCount){};
+    CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, uint64_t _size,
+                        int64_t _sigOps)
+        : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps) {}
 };
 
 struct CBlockTemplate {
