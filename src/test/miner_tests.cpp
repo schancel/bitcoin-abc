@@ -28,6 +28,13 @@
 
 #include <memory>
 
+struct CBlockTemplateEntryTest {
+    static void AccountForParent(CBlockTemplateEntry &e,
+                                 const CBlockTemplateEntry &p) {
+        return e.AccountForParent(p);
+    }
+};
+
 BOOST_FIXTURE_TEST_SUITE(miner_tests, TestingSetup)
 
 static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE_PER_KB);
@@ -781,6 +788,15 @@ BOOST_AUTO_TEST_CASE(TestCBlockTemplateEntry) {
     BOOST_CHECK_EQUAL(txEntry.packageFee, 1 * SATOSHI);
     BOOST_CHECK_EQUAL(txEntry.packageSize, 200);
     BOOST_CHECK_EQUAL(txEntry.packageSigOps, 10);
+
+    CBlockTemplateEntry txChildEntry(txRef, 10 * SATOSHI, 2000, 20);
+    CBlockTemplateEntryTest::AccountForParent(txChildEntry, txEntry);
+    BOOST_CHECK_EQUAL(txChildEntry.txFee, 10 * SATOSHI);
+    BOOST_CHECK_EQUAL(txChildEntry.txSize, 2000);
+    BOOST_CHECK_EQUAL(txChildEntry.txSigOps, 20);
+    BOOST_CHECK_EQUAL(txChildEntry.packageFee, 11 * SATOSHI);
+    BOOST_CHECK_EQUAL(txChildEntry.packageSize, 2200);
+    BOOST_CHECK_EQUAL(txChildEntry.packageSigOps, 30);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
