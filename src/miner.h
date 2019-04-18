@@ -179,6 +179,8 @@ struct update_for_parent_inclusion {
 /** Generate a new block, without valid proof-of-work */
 class BlockAssembler {
 private:
+    typedef std::unordered_set<TxId, SaltedTxidHasher> TxIdSet;
+
     // The constructed block template
     std::unique_ptr<CBlockTemplate> pblocktemplate;
     // A convenience pointer that always refers to the CBlock in pblocktemplate
@@ -193,7 +195,7 @@ private:
     uint64_t nBlockTx;
     uint64_t nBlockSigOps;
     Amount nFees;
-    CTxMemPool::setEntries inBlock;
+    TxIdSet inBlock;
 
     // Chain context for the block
     int nHeight;
@@ -256,7 +258,7 @@ private:
      * or if the transaction's cached data in mapTx is incorrect. */
     bool SkipMapTxEntry(CTxMemPool::txiter it,
                         indexed_modified_transaction_set &mapModifiedTx,
-                        CTxMemPool::setEntries &failedTx);
+                        const TxIdSet &failedTx);
     /** Sort the package in an order that is valid to appear in a block */
     void SortForBlock(const CTxMemPool::setEntries &package,
                       CTxMemPool::txiter entry,
@@ -265,6 +267,8 @@ private:
      * state updated assuming given transactions are inBlock. Returns number
      * of updated descendants. */
     int UpdatePackagesForAdded(const CTxMemPool::setEntries &alreadyAdded,
+                               indexed_modified_transaction_set &mapModifiedTx);
+    int UpdatePackagesForAdded(const TxIdSet &alreadyAdded,
                                indexed_modified_transaction_set &mapModifiedTx);
 };
 
