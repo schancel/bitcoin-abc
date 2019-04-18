@@ -33,9 +33,17 @@ struct CBlockTemplateEntry {
     //!< ... Track number of sigops
     uint64_t txSigOps;
 
+    //!< Track information about the package
+    uint64_t packageCount;
+    Amount packageFee;
+    size_t packageSize;
+    uint64_t packageSigOps;
+
     CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, uint64_t _size,
                         int64_t _sigOps)
-        : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps) {}
+        : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps),
+              packageCount(1), packageFee(_fees), packageSize(_size), packageSigOps(_sigOps)
+    {}
 };
 
 struct CBlockTemplate {
