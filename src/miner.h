@@ -42,8 +42,29 @@ struct CBlockTemplateEntry {
     CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, uint64_t _size,
                         int64_t _sigOps)
         : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps),
-              packageCount(1), packageFee(_fees), packageSize(_size), packageSigOps(_sigOps)
-    {}
+          packageCount(1), packageFee(_fees), packageSize(_size),
+          packageSigOps(_sigOps) {}
+
+    // Calculate the feerate for this transaction.  Use the minimum of the
+    // package feerate, or the transaction itself.  Parents TXNs should never
+    // end up "paying for" child transactions.
+    CFeeRate FeeRate() const {
+        return int64_t(txSize) * packageFee < int64_t(packageSize) * txFee
+                   ? CFeeRate(packageFee, packageSize)
+                   : CFeeRate(txFee, txSize);
+    }
+
+private:
+    // Include a parent transactions accounting into our own.
+    // We assume that this is used in topological order by BlockAssembler.
+    void AccountForParent(CBlockTemplateEntry &parent) {
+        packageCount = std::max(parent.packageCount + 1, packageCount);
+        packageFee += parent.packageFee;
+        packageSize += parent.packageSize;
+        packageSigOps += parent.packageSigOps;
+    }
+
+    friend class BlockAssembler;
 };
 
 struct CBlockTemplate {
