@@ -639,6 +639,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
             if (hasBeenAdded) {
                 continue;
             }
+            std::cout << "Adding... " << addTxID.GetHex() << std::endl;
             inBlock.insert(addTxID);
             pblocktemplate->entries.emplace_back(entryToAdd.tx, entryToAdd.txFee,
                                                  entryToAdd.txSize, entryToAdd.txSigOps);
@@ -740,6 +741,7 @@ void BlockAssembler::addPriorityTxs() {
             continue;
         }
 
+        std::cout << "Why are we here?" << std::endl;
         AddToBlock(iter);
 
         // If now that this txs is added we've surpassed our desired priority

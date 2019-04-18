@@ -123,6 +123,8 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
                                             .Time(GetTime())
                                             .SpendsCoinbase(false)
                                             .FromTx(tx));
+    std::cout << "Mempool size? 3 == " << g_mempool.mapTx.size() << std::endl;
+
     std::cout << "Zeroth " << parentTxId.GetHex() << std::endl;
 
     std::unique_ptr<CBlockTemplate> pblocktemplate =
@@ -131,8 +133,13 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     BOOST_CHECK(pblocktemplate->block.vtx[2]->GetId() == highFeeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[3]->GetId() == mediumFeeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[0]->GetId() == parentTxId);
+    std::cout << "CoinBaseID " << pblocktemplate->block.vtx[0]->GetId().GetHex() << std::endl;
 
-    std::cout << "First " << pblocktemplate->block.vtx[1]->GetId().GetHex() << std::endl;
+    size_t index = 0 ;
+    for ( const auto &entry : pblocktemplate->block.vtx) {
+        std::cout << "Tx:  "<<index << " " << entry->GetId().GetHex() << std::endl;
+        index++;
+    }
 
     // Test that a package below the block min tx fee doesn't get included
     tx.vin[0].prevout = COutPoint(highFeeTxId, 0);
