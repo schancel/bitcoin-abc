@@ -235,6 +235,8 @@ void Blockworks::AddTransactionsToBlock(CTxMemPool &mempool) {
         seen.clear();
         for (const auto &txIn : entry.tx->vin) {
             const TxId &parentId = txIn.prevout.GetTxId();
+            // Do not count a direct ancestor twice.
+            // We will count further ancestors twice though.
             if (seen.count(parentId) != 0) {
                 continue;
             }

@@ -452,147 +452,226 @@ void BlockAssembler::SortForBlock(
  */
 void BlockAssembler::addPackageTxs(int &nPackagesSelected,
                                    int &nDescendantsUpdated) {
+    std::vector<CBlockTemplateEntry> txPool;
+    txPool.reserve(txPool.size());
 
-    // selection algorithm orders the mempool based on feerate of a
-    // transaction including all unconfirmed ancestors. Since we don't remove
-    // transactions from the mempool as we select them for block inclusion, we
-    // need an alternate method of updating the feerate of a transaction with
-    // its not-yet-selected ancestors as we go. This is accomplished by
-    // walking the in-mempool descendants of selected transactions and storing
-    // a temporary modified state in mapModifiedTxs. Each time through the
-    // loop, we compare the best transaction in mapModifiedTxs with the next
-    // transaction in the mempool to decide what transaction package to work
-    // on next.
+    std::unordered_map<TxId, size_t, SaltedTxidHasher> txLocations;
+    // Fetch all the transactions in dependency order.
+    // Complexity: O(n)
+    txPool.reserve(mempool->mapTx.size());
+    size_t idx = 0;
+    for (const auto &mempoolEntry : mempool->mapTx.get<insertion_order>()) {
+        const CTransactionRef tx = mempoolEntry.GetSharedTx();
+        txPool.emplace_back(mempoolEntry.GetSharedTx(),
+                            mempoolEntry.GetFee(), mempoolEntry.GetTxSize(),
+                            mempoolEntry.GetSigOpCount());
+        txLocations[tx->GetId()] = idx;
+        idx += 1;
+    }
+    
 
-    // mapModifiedTx will store sorted packages after they are modified because
-    // some of their txs are already in the block.
-    indexed_modified_transaction_set mapModifiedTx;
-    // Keep track of entries that failed inclusion, to avoid duplicate work.
-    TxIdSet failedTx;
+    // Figure out how many parents transactions have.
+    // Complexity: O(n + m) where n is transactions, and m is edges.
+    //
+    // All the dependencies of a transaction appear before the transaction.
+    // So we can iterate forward, and simply add all the parents dependency
+    // count to our count. Note: If there is a diamond shaped inheritance, we
+    // will multi-count. We don't care. We will still maintain an invarent that
+    // children come after parents when sorting by the value we calculate here.
+    // And in fact, it's good to double count here, because we will need to
+    // visit them twice.
+    std::unordered_set<TxId, SaltedTxidHasher> seen;
+    for (auto &entry : txPool) {
+        // Clear out seen list, for the next transaction.
+        seen.clear();
+        for (const auto &txIn : entry.tx->vin) {
+            const TxId &parentId = txIn.prevout.GetTxId();
+            // Do not count a direct ancestor twice.
+            // We will count further ancestors twice though.
+            if (seen.count(parentId) != 0) {
+                continue;
+            }
+            seen.insert(parentId);
+            auto it = txLocations.find(parentId);
+            if (it == txLocations.end()) {
+                // Confirmed parent transaction
+                // (We know this because the mempool we have was guaranteed to
+                // be consistent)
+                continue;
+            }
 
-    // Start by adding all descendants of previously added txs to mapModifiedTx
-    // and modifying them for their already included ancestors.
-    UpdatePackagesForAdded(inBlock, mapModifiedTx);
+            // Add the parent data to this transaction
+            entry.AccountForParent(txPool[it->second]);
+        }
+    }
 
-    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator
-        mi = mempool->mapTx.get<ancestor_score>().begin();
-    CTxMemPool::txiter iter;
+    // Now sort them by package feeRate.
+    // Complexity: O(n log n)
+    //
+    // We know that we have optimally sorted feeRates, except for the single
+    // case where a parent has two children that are paying a high fee.
+    std::sort(txPool.begin(), txPool.end(),
+              [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b) {
+                  // We don't care about truncation of fees.  If the client
+                  // doesn't get a one sat of fees counted, oh well. The code
+                  // for avoiding division is atrocious.
+                  return a.FeeRate() > b.FeeRate();
+              });
 
-    // Limit the number of attempts to add transactions to the block when it is
-    // close to full; this is just a simple heuristic to finish quickly if the
-    // mempool has a lot of entries.
-    const int64_t MAX_CONSECUTIVE_FAILURES = 1000;
-    int64_t nConsecutiveFailed = 0;
+    // Update the locations of all the transactions so we can find them again
+    // later. Complexity: O(n + m) where n is transactions, and m is edges.
+    idx = 0;
+    for (const auto &blockEntry : txPool) {
+        const CTransactionRef tx = blockEntry.tx;
+        txLocations[tx->GetId()] = idx;
+        idx += 1;
+    }
 
-    while (mi != mempool->mapTx.get<ancestor_score>().end() ||
-           !mapModifiedTx.empty()) {
-        // First try to find a new transaction in mapTx to evaluate.
-        if (mi != mempool->mapTx.get<ancestor_score>().end() &&
-            SkipMapTxEntry(mempool->mapTx.project<0>(mi), mapModifiedTx,
-                           failedTx)) {
-            ++mi;
+    // Visit all the transactions in package feeRate order, adding them to the
+    // block in topological order. Complexity: O(n + m) (and some change for
+    // visiting diamond dependencies multiple times)
+    //      we charge for this as if they were two seperate transactions.
+    //
+    // Note: we only need to visit every transaction one time.
+    std::unordered_set<TxId, SaltedTxidHasher> txnsInvalid;
+    for (const auto &entry : txPool) {
+        TxId txId = entry.tx->GetId();
+        // Don't reprocess transactions
+        if (inBlock.count(txId) != 0 || txnsInvalid.count(txId) != 0) {
             continue;
         }
 
-        // Now that mi is not stale, determine which transaction to evaluate:
-        // the next entry from mapTx, or the best from mapModifiedTx?
-        bool fUsingModified = false;
+        // Visit and include all the parents in the block, checking if they are
+        // valid.
+        std::stack<std::reference_wrapper<const CBlockTemplateEntry>> ancestorStack;
+        std::stack<std::reference_wrapper<const CBlockTemplateEntry>> addStack;
 
-        modtxscoreiter modit = mapModifiedTx.get<ancestor_score>().begin();
-        if (mi == mempool->mapTx.get<ancestor_score>().end()) {
-            // We're out of entries in mapTx; use the entry from mapModifiedTx
-            iter = modit->iter;
-            fUsingModified = true;
-        } else {
-            // Try to compare the mapTx entry to the mapModifiedTx entry.
-            iter = mempool->mapTx.project<0>(mi);
-            if (modit != mapModifiedTx.get<ancestor_score>().end() &&
-                CompareModifiedEntry()(*modit, CTxMemPoolModifiedEntry(iter))) {
-                // The best entry in mapModifiedTx has higher score than the one
-                // from mapTx. Switch which transaction (package) to consider
-                iter = modit->iter;
-                fUsingModified = true;
-            } else {
-                // Either no entry in mapModifiedTx, or it's worse than mapTx.
-                // Increment mi for the next loop iteration.
-                ++mi;
-            }
+        // Check if package size would fit in the block.
+        // We won't need to check it for every ancestor below, because their
+        // values are included here already
+        auto blockSizeWithTx = nBlockSize + entry.packageSize;
+        auto maxBlockSigOps = GetMaxBlockSigOpsCount(blockSizeWithTx);
+        if (blockSizeWithTx >= nMaxGeneratedBlockSize) {
+            txnsInvalid.insert(txId);
+            goto invalid;
         }
 
-        // We skip mapTx entries that are inBlock, and mapModifiedTx shouldn't
-        // contain anything that is inBlock.
-        assert(!inBlock.count(iter->GetTx().GetId()));
-
-        uint64_t packageSize = iter->GetSizeWithAncestors();
-        Amount packageFees = iter->GetModFeesWithAncestors();
-        int64_t packageSigOps = iter->GetSigOpCountWithAncestors();
-        if (fUsingModified) {
-            packageSize = modit->nSizeWithAncestors;
-            packageFees = modit->nModFeesWithAncestors;
-            packageSigOps = modit->nSigOpCountWithAncestors;
+        // Check if package sigOps would fit in the block
+        if (nBlockSigOps + entry.packageSigOps >= maxBlockSigOps) {
+            txnsInvalid.insert(txId);
+            goto invalid;
         }
 
-        if (packageFees < blockMinFeeRate.GetFee(packageSize)) {
-            // Everything else we might consider has a lower fee rate
-            return;
-        }
+        ancestorStack.push(entry);
+        // We do a DFS incase a transaction fails, and we add them to a stack
+        // for popping into the block.
+        while (!ancestorStack.empty()) {
+            const CBlockTemplateEntry &ancestor = ancestorStack.top();
+            const TxId &ancestorId = ancestor.tx->GetId();
 
-        if (!TestPackage(packageSize, packageSigOps)) {
-            if (fUsingModified) {
-                // Since we always look at the best entry in mapModifiedTx, we
-                // must erase failed entries so that we can consider the next
-                // best entry on the next loop iteration
-                mapModifiedTx.get<ancestor_score>().erase(modit);
-                failedTx.insert(iter->GetTx().GetId());
-            }
+            ancestorStack.pop();
+            // Add it to the stack of items we will add once we have checked all
+            // the parents.
+            addStack.push(ancestor);
 
-            ++nConsecutiveFailed;
-
-            if (nConsecutiveFailed > MAX_CONSECUTIVE_FAILURES &&
-                nBlockSize > nMaxGeneratedBlockSize - 1000) {
-                // Give up if we're close to full and haven't succeeded in a
-                // while.
-                break;
+            // Must check that lock times are still valid. This can be removed
+            // once MTP is always enforced as long as reorgs keep the mempool
+            // consistent.
+            //
+            // Old code checks the transaction in context.  It doesn't make
+            // sense to me though...
+            CValidationState state;
+            if (!ContextualCheckTransaction(*config, *ancestor.tx.get(), state,
+                                            nHeight, nLockTimeCutoff,
+                                            nMedianTimePast)) {
+                // A parent is invalid, we will need to skip the rest of the
+                // transactions So we don't include (now) invalid child. We will
+                // visit them later. So we can find all it's children during
+                // invalid handling.
+                txnsInvalid.insert(ancestorId);
+                goto invalid;
             }
 
-            continue;
-        }
+            // Push all the ancestors on our DFS stack.
+            for (const auto &txIn : ancestor.tx->vin) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                size_t hasBeenAdded = inBlock.count(parentId) != 0;
+                size_t isInvalid = txnsInvalid.count(parentId) != 0;
+                if (isInvalid) {
+                    // We must have visited one of the parents before when
+                    // handling a different package. It was invalid, and we need
+                    // to mark this invalid as well.
+                    txnsInvalid.insert(ancestorId);
+                    goto invalid;
+                }
+                if (hasBeenAdded) {
+                    // Has already been added to the block. We can skip checking
+                    // it.
+                    continue;
+                }
+                // Don't yet mark the transaction as visited.  We may need to
+                // visit it twice in this loop to ensure topological ordering
+                // when popping off the stack.
 
-        CTxMemPool::setEntries ancestors;
-        uint64_t nNoLimit = std::numeric_limits<uint64_t>::max();
-        std::string dummy;
-        mempool->CalculateMemPoolAncestors(*iter, ancestors, nNoLimit, nNoLimit,
-                                           nNoLimit, nNoLimit, dummy, false);
+                auto it = txLocations.find(parentId);
+                if (it == txLocations.end()) {
+                    // Confirmed parent transaction
+                    // (We know this because the mempool we have was guaranteed
+                    // to be consistent)
+                    continue;
+                }
+                const CBlockTemplateEntry &ancestorParent = txPool[it->second];
 
-        onlyUnconfirmed(ancestors);
-        ancestors.insert(iter);
-
-        // Test if all tx's are Final.
-        if (!TestPackageTransactions(ancestors)) {
-            if (fUsingModified) {
-                mapModifiedTx.get<ancestor_score>().erase(modit);
-                failedTx.insert(iter->GetTx().GetId());
+                // Record the parent so we can visit it later.
+                ancestorStack.push(ancestorParent);
             }
-            continue;
         }
+        // We know we can add the transaction here.
+        // Every item in the package has passed requirements.
+        while (!addStack.empty()) {
+            const CBlockTemplateEntry &entryToAdd = addStack.top();
+            const TxId &addTxID = entryToAdd.tx->GetId();
+            size_t hasBeenAdded = inBlock.count(addTxID) != 0;
 
-        // This transaction will make it in; reset the failed counter.
-        nConsecutiveFailed = 0;
-
-        // Package can be added. Sort the entries in a valid order.
-        std::vector<CTxMemPool::txiter> sortedEntries;
-        SortForBlock(ancestors, iter, sortedEntries);
-
-        for (auto &entry : sortedEntries) {
-            AddToBlock(entry);
-            // Erase from the modified set, if present
-            mapModifiedTx.erase(entry);
+            addStack.pop();
+            // The addStack can have duplicates, so we need to ensure we don't
+            // add the same transaction twice in this loop.
+            if (hasBeenAdded) {
+                continue;
+            }
+            inBlock.insert(addTxID);
+            pblocktemplate->entries.emplace_back(entryToAdd.tx, entryToAdd.txFee,
+                                                 entryToAdd.txSize, entryToAdd.txSigOps);
+            nBlockSize += entryToAdd.txSize;
+            ++nBlockTx;
+            nBlockSigOps += entryToAdd.txSigOps;
+            nFees += entryToAdd.txFee;
         }
-
         ++nPackagesSelected;
+        continue;
+    invalid:
+        // Mark all children of the invalid transaction as themselves invalid.
+        // Don't add anything in this package to a block.
+        while (!addStack.empty()) {
+            const CBlockTemplateEntry &child = addStack.top();
+            addStack.pop();
+            // If we are here, it means we marked one of the parents of an
+            // addStack item invalid. because the stack is in topological order,
+            // we can be sure we will mark invalid transactions in order going
+            // all the way back up to the root transaction.
+            for (const auto &txIn : child.tx->vin) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                size_t isInvalid = txnsInvalid.count(parentId) != 0;
+                if (isInvalid) {
+                    txnsInvalid.insert(child.tx->GetId());
 
-        // Update transactions that depend on each of these
-        nDescendantsUpdated += UpdatePackagesForAdded(ancestors, mapModifiedTx);
+                    // We can stop here, we only need to find one invalid parent
+                    // to know this is invalid.
+                    break;
+                }
+            }
+        }
+        continue;
     }
 }
 
