@@ -171,6 +171,8 @@ struct update_for_parent_inclusion {
 /** Generate a new block, without valid proof-of-work */
 class BlockAssembler {
 private:
+    typedef std::unordered_set<TxId, SaltedTxidHasher> TxIdSet;
+
     // The constructed block template
     std::unique_ptr<CBlockTemplate> pblocktemplate;
     // A convenience pointer that always refers to the CBlock in pblocktemplate
@@ -185,7 +187,7 @@ private:
     uint64_t nBlockTx;
     uint64_t nBlockSigOps;
     Amount nFees;
-    CTxMemPool::setEntries inBlock;
+    TxIdSet inBlock;
 
     // Chain context for the block
     int nHeight;
@@ -258,6 +260,7 @@ private:
      * of updated descendants. */
     int UpdatePackagesForAdded(const CTxMemPool::setEntries &alreadyAdded,
                                indexed_modified_transaction_set &mapModifiedTx);
+    int UpdatePackagesForAdded(const TxIdSet &alreadyAdded,  indexed_modified_transaction_set &mapModifiedTx);
 };
 
 /** Modify the extranonce in a block */

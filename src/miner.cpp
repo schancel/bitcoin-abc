@@ -248,7 +248,7 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
 
 bool BlockAssembler::isStillDependent(CTxMemPool::txiter iter) {
     for (CTxMemPool::txiter parent : mempool->GetMemPoolParents(iter)) {
-        if (!inBlock.count(parent)) {
+        if (!inBlock.count(parent->GetTx().GetId())) {
             return true;
         }
     }
@@ -259,7 +259,7 @@ void BlockAssembler::onlyUnconfirmed(CTxMemPool::setEntries &testSet) {
     for (CTxMemPool::setEntries::iterator iit = testSet.begin();
          iit != testSet.end();) {
         // Only test txs not already in the block.
-        if (inBlock.count(*iit)) {
+        if (inBlock.count((*iit)->GetTx().GetId())) {
             testSet.erase(iit++);
         } else {
             iit++;
@@ -360,7 +360,7 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter) {
     ++nBlockTx;
     nBlockSigOps += iter->GetSigOpCount();
     nFees += iter->GetFee();
-    inBlock.insert(iter);
+    inBlock.insert(iter->GetTx().GetId());
 
     bool fPrintPriority =
         gArgs.GetBoolArg("-printpriority", DEFAULT_PRINTPRIORITY);
@@ -373,6 +373,15 @@ void BlockAssembler::AddToBlock(CTxMemPool::txiter iter) {
             CFeeRate(iter->GetModifiedFee(), iter->GetTxSize()).ToString(),
             iter->GetTx().GetId().ToString());
     }
+}
+
+// TODO: Temporary adapter, delete this eventually.
+int BlockAssembler::UpdatePackagesForAdded(const TxIdSet &alreadyAdded,  indexed_modified_transaction_set &mapModifiedTx) {
+    CTxMemPool::setEntries entries;
+    for (const TxId &id : alreadyAdded) {
+        entries.insert(mempool->mapTx.find(id));
+    }
+    return UpdatePackagesForAdded(entries, mapModifiedTx);
 }
 
 int BlockAssembler::UpdatePackagesForAdded(
@@ -418,7 +427,7 @@ bool BlockAssembler::SkipMapTxEntry(
     CTxMemPool::txiter it, indexed_modified_transaction_set &mapModifiedTx,
     CTxMemPool::setEntries &failedTx) {
     assert(it != mempool->mapTx.end());
-    return mapModifiedTx.count(it) || inBlock.count(it) || failedTx.count(it);
+    return mapModifiedTx.count(it) || inBlock.count(it->GetTx().GetId()) || failedTx.count(it);
 }
 
 void BlockAssembler::SortForBlock(
@@ -511,7 +520,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
 
         // We skip mapTx entries that are inBlock, and mapModifiedTx shouldn't
         // contain anything that is inBlock.
-        assert(!inBlock.count(iter));
+        assert(!inBlock.count(iter->GetTx().GetId()));
 
         uint64_t packageSize = iter->GetSizeWithAncestors();
         Amount packageFees = iter->GetModFeesWithAncestors();
@@ -627,7 +636,7 @@ void BlockAssembler::addPriorityTxs() {
         vecPriority.pop_back();
 
         // If tx already in block, skip.
-        if (inBlock.count(iter)) {
+        if (inBlock.count(iter->GetTx().GetId())) {
             // Shouldn't happen for priority txs.
             assert(false);
             continue;
