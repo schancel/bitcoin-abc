@@ -250,7 +250,7 @@ private:
      * or if the transaction's cached data in mapTx is incorrect. */
     bool SkipMapTxEntry(CTxMemPool::txiter it,
                         indexed_modified_transaction_set &mapModifiedTx,
-                        CTxMemPool::setEntries &failedTx);
+                        const TxIdSet &failedTx);
     /** Sort the package in an order that is valid to appear in a block */
     void SortForBlock(const CTxMemPool::setEntries &package,
                       CTxMemPool::txiter entry,

@@ -425,9 +425,10 @@ int BlockAssembler::UpdatePackagesForAdded(
 // be using cached size/sigops/fee values that are not actually correct.
 bool BlockAssembler::SkipMapTxEntry(
     CTxMemPool::txiter it, indexed_modified_transaction_set &mapModifiedTx,
-    CTxMemPool::setEntries &failedTx) {
+    const TxIdSet &failedTx) {
     assert(it != mempool->mapTx.end());
-    return mapModifiedTx.count(it) || inBlock.count(it->GetTx().GetId()) || failedTx.count(it);
+    const TxId &txId = it->GetTx().GetId();
+    return mapModifiedTx.count(it) || inBlock.count(txId) || failedTx.count(txId);
 }
 
 void BlockAssembler::SortForBlock(
@@ -467,7 +468,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
     // some of their txs are already in the block.
     indexed_modified_transaction_set mapModifiedTx;
     // Keep track of entries that failed inclusion, to avoid duplicate work.
-    CTxMemPool::setEntries failedTx;
+    TxIdSet failedTx;
 
     // Start by adding all descendants of previously added txs to mapModifiedTx
     // and modifying them for their already included ancestors.
@@ -542,7 +543,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
                 // must erase failed entries so that we can consider the next
                 // best entry on the next loop iteration
                 mapModifiedTx.get<ancestor_score>().erase(modit);
-                failedTx.insert(iter);
+                failedTx.insert(iter->GetTx().GetId());
             }
 
             ++nConsecutiveFailed;
@@ -570,7 +571,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
         if (!TestPackageTransactions(ancestors)) {
             if (fUsingModified) {
                 mapModifiedTx.get<ancestor_score>().erase(modit);
-                failedTx.insert(iter);
+                failedTx.insert(iter->GetTx().GetId());
             }
             continue;
         }
