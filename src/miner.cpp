@@ -68,7 +68,7 @@ int64_t UpdateTime(CBlockHeader *pblock, const Config &config,
 }
 
 uint64_t ComputeMaxGeneratedBlockSize(const Config &config,
-                                             const CBlockIndex *pindexPrev) {
+                                      const CBlockIndex *pindexPrev) {
     // Block resource limits
     // If -blockmaxsize is not given, limit to DEFAULT_MAX_GENERATED_BLOCK_SIZE
     // If only one is given, only restrict the specified resource.
@@ -140,7 +140,7 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
     pblock = &pblocktemplate->block;
 
     // Add dummy coinbase tx as first transaction.  It is updated at the end.
-    pblocktemplate->entries.emplace_back(CTransactionRef(), -SATOSHI, -1);
+    pblocktemplate->entries.emplace_back(CTransactionRef(), -SATOSHI, 0, -1);
 
     LOCK2(cs_main, mempool->cs);
     CBlockIndex *pindexPrev = chainActive.Tip();
@@ -203,7 +203,7 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
     }
 
     pblocktemplate->entries[0].tx = MakeTransactionRef(coinbaseTx);
-    pblocktemplate->entries[0].fees = -1 * nFees;
+    pblocktemplate->entries[0].txFee = -1 * nFees;
 
     uint64_t nSerializeSize =
         GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION);
@@ -216,7 +216,7 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
     UpdateTime(pblock, *config, pindexPrev);
     pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, *config);
     pblock->nNonce = 0;
-    pblocktemplate->entries[0].sigOpCount = GetSigOpCountWithoutP2SH(
+    pblocktemplate->entries[0].txSigOps = GetSigOpCountWithoutP2SH(
         *pblocktemplate->entries[0].tx, STANDARD_CHECKDATASIG_VERIFY_FLAGS);
 
     // Copy all the transactions into the block
@@ -354,6 +354,7 @@ BlockAssembler::TestForBlock(CTxMemPool::txiter it) {
 
 void BlockAssembler::AddToBlock(CTxMemPool::txiter iter) {
     pblocktemplate->entries.emplace_back(iter->GetSharedTx(), iter->GetFee(),
+                                         iter->GetTxSize(),
                                          iter->GetSigOpCount());
     nBlockSize += iter->GetTxSize();
     ++nBlockTx;
