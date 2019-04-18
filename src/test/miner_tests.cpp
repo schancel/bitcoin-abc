@@ -123,12 +123,16 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
                                             .Time(GetTime())
                                             .SpendsCoinbase(false)
                                             .FromTx(tx));
+    std::cout << "Zeroth " << parentTxId.GetHex() << std::endl;
 
     std::unique_ptr<CBlockTemplate> pblocktemplate =
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
     BOOST_CHECK(pblocktemplate->block.vtx[1]->GetId() == parentTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[2]->GetId() == highFeeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[3]->GetId() == mediumFeeTxId);
+    BOOST_CHECK(pblocktemplate->block.vtx[0]->GetId() == parentTxId);
+
+    std::cout << "First " << pblocktemplate->block.vtx[1]->GetId().GetHex() << std::endl;
 
     // Test that a package below the block min tx fee doesn't get included
     tx.vin[0].prevout = COutPoint(highFeeTxId, 0);
@@ -141,6 +145,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     // Calculate a fee on child transaction that will put the package just
     // below the block min tx fee (assuming 1 child tx of the same size).
     Amount feeToUse = blockMinFeeRate.GetFee(2 * freeTxSize) - SATOSHI;
+    std::cout << "Second" << std::endl;
 
     tx.vin[0].prevout = COutPoint(freeTxId, 0);
     tx.vout[0].nValue =
@@ -154,7 +159,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
         BOOST_CHECK(txn->GetId() != freeTxId);
         BOOST_CHECK(txn->GetId() != lowFeeTxId);
     }
-
+    std::cout << "Third" << std::endl;
     // Test that packages above the min relay fee do get included, even if one
     // of the transactions is below the min relay fee. Remove the low fee
     // transaction and replace with a higher fee transaction
@@ -168,7 +173,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
     BOOST_CHECK(pblocktemplate->block.vtx[4]->GetId() == freeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[5]->GetId() == lowFeeTxId);
-
+    std::cout << "Fifth" << std::endl;
     // Test that transaction selection properly updates ancestor fee
     // calculations as ancestor transactions get included in a block. Add a
     // 0-fee transaction that has 2 outputs.
@@ -197,6 +202,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
         BOOST_CHECK(txn->GetId() != freeTxId2);
         BOOST_CHECK(txn->GetId() != lowFeeTxId2);
     }
+    std::cout << "Sixth" << std::endl;
 
     // This tx will be mineable, and should cause lowFeeTxId2 to be selected as
     // well.
@@ -263,6 +269,8 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity) {
     fCheckpointsEnabled = false;
 
     GlobalConfig config;
+
+    std::cout << "Hello Test" << std::endl;
 
     // Simple block creation, nothing special yet:
     BOOST_CHECK(

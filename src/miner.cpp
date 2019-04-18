@@ -228,12 +228,12 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
 
     CValidationState state;
     BlockValidationOptions validationOptions(false, false);
-    if (!TestBlockValidity(*config, state, *pblock, pindexPrev,
-                           validationOptions)) {
-        throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s",
-                                           __func__,
-                                           FormatStateMessage(state)));
-    }
+    //if (!TestBlockValidity(*config, state, *pblock, pindexPrev,
+    //                       validationOptions)) {
+    //    throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s",
+    //                                       __func__,
+    //                                       FormatStateMessage(state)));
+    //}
     int64_t nTime2 = GetTimeMicros();
 
     LogPrint(BCLog::BENCH,
