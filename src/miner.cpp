@@ -228,12 +228,12 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
 
     CValidationState state;
     BlockValidationOptions validationOptions(false, false);
-    //if (!TestBlockValidity(*config, state, *pblock, pindexPrev,
-    //                       validationOptions)) {
-    //    throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s",
-    //                                       __func__,
-    //                                       FormatStateMessage(state)));
-    //}
+    if (!TestBlockValidity(*config, state, *pblock, pindexPrev,
+                           validationOptions)) {
+        throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s",
+                                           __func__,
+                                           FormatStateMessage(state)));
+    }
     int64_t nTime2 = GetTimeMicros();
 
     LogPrint(BCLog::BENCH,
@@ -473,14 +473,13 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
     // Figure out how many parents transactions have.
     // Complexity: O(n + m) where n is transactions, and m is edges.
     //
-    // All the dependencies of a transaction appear before the transaction.
-    // So we can iterate forward, and simply add all the parents dependency
+    // All the dependencies of a transaction after before the transaction.
+    // So we can iterate backwards, and simply add all the child dependency
     // count to our count. Note: If there is a diamond shaped inheritance, we
-    // will multi-count. We don't care. We will still maintain an invarent that
-    // children come after parents when sorting by the value we calculate here.
-    // And in fact, it's good to double count here, because we will need to
-    // visit them twice.
+    // will multi-count. We don't care, the extract coputation cost is not worth
+    // dealing with it.I wa
     std::unordered_set<TxId, SaltedTxidHasher> seen;
+    // Iterate in reverse topographical order
     for (auto &entry : txPool) {
         // Clear out seen list, for the next transaction.
         seen.clear();
@@ -499,23 +498,29 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
                 // be consistent)
                 continue;
             }
+            std::cout << "Fee Rate: " << CFeeRate(entry.txFee, entry.txSize).ToString() << " " <<
+                CFeeRate(entry.packageFee, entry.packageSize).ToString() << " " <<
+                std::endl;
 
             // Add the parent data to this transaction
             entry.AccountForParent(txPool[it->second]);
+
+            std::cout << "Fee Rate: " << CFeeRate(entry.txFee, entry.txSize).ToString() << " " <<
+                CFeeRate(entry.packageFee, entry.packageSize).ToString() << " " <<
+                std::endl;
         }
     }
 
     // Now sort them by package feeRate.
     // Complexity: O(n log n)
     //
-    // We know that we have optimally sorted feeRates, except for the single
-    // case where a parent has two children that are paying a high fee.
+    // Sort first by the order of the transaction. All order zero transactions can go in based on package fees.
     std::sort(txPool.begin(), txPool.end(),
               [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b) {
                   // We don't care about truncation of fees.  If the client
                   // doesn't get a one sat of fees counted, oh well. The code
                   // for avoiding division is atrocious.
-                  return a.FeeRate() > b.FeeRate();
+                  return a.GetOrder() == b.GetOrder() ? a.FeeRate() > b.FeeRate() : a.GetOrder() < b.GetOrder();
               });
 
     // Update the locations of all the transactions so we can find them again
@@ -540,6 +545,17 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
         if (inBlock.count(txId) != 0 || txnsInvalid.count(txId) != 0) {
             continue;
         }
+
+        std::cout << "Fee Rate: " << CFeeRate(entry.txFee, entry.txSize).ToString() << " " <<
+            CFeeRate(entry.packageFee, entry.packageSize).ToString() << " " <<
+            blockMinFeeRate.ToString() << std::endl;
+
+        // Skip low fee packages
+        if (entry.FeeRate() < blockMinFeeRate) {
+            continue;
+        }
+        std::cout << "Fee Rate: " << entry.FeeRate().ToString() << " " <<
+            blockMinFeeRate.ToString() << std::endl;
 
         // Visit and include all the parents in the block, checking if they are
         // valid.
@@ -573,6 +589,10 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
             // Add it to the stack of items we will add once we have checked all
             // the parents.
             addStack.push(ancestor);
+
+            std::cout << "A Fee Rate: " << CFeeRate(entry.txFee, entry.txSize).ToString() << " " <<
+                CFeeRate(entry.packageFee, entry.packageSize).ToString() << " " <<
+                blockMinFeeRate.ToString() << std::endl;
 
             // Must check that lock times are still valid. This can be removed
             // once MTP is always enforced as long as reorgs keep the mempool

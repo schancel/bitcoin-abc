@@ -132,7 +132,6 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     BOOST_CHECK(pblocktemplate->block.vtx[1]->GetId() == parentTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[2]->GetId() == highFeeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[3]->GetId() == mediumFeeTxId);
-    BOOST_CHECK(pblocktemplate->block.vtx[0]->GetId() == parentTxId);
     std::cout << "CoinBaseID " << pblocktemplate->block.vtx[0]->GetId().GetHex() << std::endl;
 
     size_t index = 0 ;
