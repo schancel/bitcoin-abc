@@ -841,11 +841,6 @@ std::string HelpMessage(HelpMessageMode mode) {
         strprintf(_("Set maximum percentage of a block reserved to "
                     "high-priority/low-fee transactions (default: %d)"),
                   DEFAULT_BLOCK_PRIORITY_PERCENTAGE));
-    strUsage += HelpMessageOpt(
-        "-blockmintxfee=<amt>",
-        strprintf(_("Set lowest fee rate (in %s/kB) for transactions to be "
-                    "included in block creation. (default: %s)"),
-                  CURRENCY_UNIT, FormatMoney(DEFAULT_BLOCK_MIN_TX_FEE_PER_KB)));
     if (showDebug) {
         strUsage +=
             HelpMessageOpt("-blockversion=<n>",
@@ -1635,17 +1630,6 @@ bool AppInitParameterInteraction(Config &config, RPCServer &rpcServer) {
         config.SetMinFeePerKB(CFeeRate(n));
     } else {
         config.SetMinFeePerKB(CFeeRate(DEFAULT_MIN_RELAY_TX_FEE_PER_KB));
-    }
-
-    // Sanity check argument for min fee for including tx in block
-    // TODO: Harmonize which arguments need sanity checking and where that
-    // happens.
-    if (gArgs.IsArgSet("-blockmintxfee")) {
-        Amount n = Amount::zero();
-        if (!ParseMoney(gArgs.GetArg("-blockmintxfee", ""), n)) {
-            return InitError(AmountErrMsg("blockmintxfee",
-                                          gArgs.GetArg("-blockmintxfee", "")));
-        }
     }
 
     // Feerate used to define dust.  Shouldn't be changed lightly as old

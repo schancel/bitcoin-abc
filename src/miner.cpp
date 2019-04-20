@@ -90,14 +90,6 @@ static uint64_t ComputeMaxGeneratedBlockSize(const Config &config,
 BlockAssembler::BlockAssembler(const Config &_config, const CTxMemPool &mpool)
     : config(&_config), mempool(&mpool) {
 
-    if (gArgs.IsArgSet("-blockmintxfee")) {
-        Amount n = Amount::zero();
-        ParseMoney(gArgs.GetArg("-blockmintxfee", ""), n);
-        blockMinFeeRate = CFeeRate(n);
-    } else {
-        blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE_PER_KB);
-    }
-
     LOCK(cs_main);
     nMaxGeneratedBlockSize =
         ComputeMaxGeneratedBlockSize(*config, chainActive.Tip());
@@ -519,11 +511,6 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected,
             packageSize = modit->nSizeWithAncestors;
             packageFees = modit->nModFeesWithAncestors;
             packageSigOps = modit->nSigOpCountWithAncestors;
-        }
-
-        if (packageFees < blockMinFeeRate.GetFee(packageSize)) {
-            // Everything else we might consider has a lower fee rate
-            return;
         }
 
         if (!TestPackage(packageSize, packageSigOps)) {

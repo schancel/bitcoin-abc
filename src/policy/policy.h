@@ -26,11 +26,6 @@ static const uint64_t DEFAULT_MAX_GENERATED_BLOCK_SIZE = 2 * ONE_MEGABYTE;
  */
 static const uint64_t DEFAULT_BLOCK_PRIORITY_PERCENTAGE = 5;
 /**
- * Default for -blockmintxfee, which sets the minimum feerate for a transaction
- * in blocks created by mining code.
- */
-static const Amount DEFAULT_BLOCK_MIN_TX_FEE_PER_KB(1000 * SATOSHI);
-/**
  * The maximum size for transactions we're willing to relay/mine.
  */
 static const unsigned int MAX_STANDARD_TX_SIZE = 100000;

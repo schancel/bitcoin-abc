@@ -8,6 +8,7 @@
 #include <txmempool.h>
 #include <uint256.h>
 #include <util.h>
+#include <validation.h>
 
 #include <test/test_bitcoin.h>
 
@@ -43,7 +44,7 @@ BOOST_AUTO_TEST_CASE(MempoolMinimumFeeEstimate) {
             tx.vin[0].nSequence = 10000 * blocknum + j;
             TxId txid = tx.GetId();
             mpool.addUnchecked(
-                txid, entry.Fee((j + 1) * DEFAULT_BLOCK_MIN_TX_FEE_PER_KB)
+                txid, entry.Fee((j + 1) * DEFAULT_MIN_RELAY_TX_FEE_PER_KB)
                           .Time(GetTime())
                           .Priority(0)
                           .Height(blocknum)
@@ -78,9 +79,9 @@ BOOST_AUTO_TEST_CASE(MempoolMinimumFeeEstimate) {
         tx.vin[0].nSequence = 10000 * blocknum + i;
         // Add new transaction to the mempool with a increasing fee
         // The average should end up as 1/2 * 100 *
-        // DEFAULT_BLOCK_MIN_TX_FEE_PER_KB
+        // DEFAULT_MIN_RELAY_TX_FEE_PER_KB
         mpool.addUnchecked(tx.GetId(),
-                           entry.Fee((i + 1) * DEFAULT_BLOCK_MIN_TX_FEE_PER_KB)
+                           entry.Fee((i + 1) * DEFAULT_MIN_RELAY_TX_FEE_PER_KB)
                                .Time(GetTime())
                                .Priority(0)
                                .Height(blocknum)
@@ -88,12 +89,12 @@ BOOST_AUTO_TEST_CASE(MempoolMinimumFeeEstimate) {
     }
 
     // Trim to size.  GetMinFee should be more than 10000 *
-    // DEFAULT_BLOCK_MIN_TX_FEE_PER_KB But the estimateFee should be
+    // DEFAULT_MIN_RELAY_TX_FEE_PER_KB But the estimateFee should be
     // unchanged.
     mpool.TrimToSize(1);
 
     BOOST_CHECK(mpool.GetMinFee(1) >=
-                CFeeRate(10000 * DEFAULT_BLOCK_MIN_TX_FEE_PER_KB,
+                CFeeRate(10000 * DEFAULT_MIN_RELAY_TX_FEE_PER_KB,
                          CTransaction(tx).GetTotalSize()));
 
     BOOST_CHECK_MESSAGE(mpool.estimateFee() == mpool.GetMinFee(1),

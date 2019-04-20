@@ -130,10 +130,11 @@ def create_confirmed_utxos(node, count, age=101):
     Helper to create at least "count" utxos
     """
     to_generate = int(0.5 * count) + age
+    previous_utxos = node.listunspent()
     while to_generate > 0:
         node.generate(min(25, to_generate))
         to_generate -= 25
-    utxos = node.listunspent()
+    new_utxos = node.listunspent()
     iterations = count - len(utxos)
     addr1 = node.getnewaddress()
     addr2 = node.getnewaddress()

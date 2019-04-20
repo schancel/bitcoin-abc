@@ -29,8 +29,6 @@
 
 BOOST_FIXTURE_TEST_SUITE(miner_tests, TestingSetup)
 
-static CFeeRate blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE_PER_KB);
-
 static struct {
     uint8_t extranonce;
     uint32_t nonce;
@@ -137,76 +135,6 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     TxId freeTxId = tx.GetId();
     g_mempool.addUnchecked(freeTxId, entry.Fee(Amount::zero()).FromTx(tx));
     size_t freeTxSize = CTransaction(tx).GetBillableSize();
-
-    // Calculate a fee on child transaction that will put the package just
-    // below the block min tx fee (assuming 1 child tx of the same size).
-    Amount feeToUse = blockMinFeeRate.GetFee(2 * freeTxSize) - SATOSHI;
-
-    tx.vin[0].prevout = COutPoint(freeTxId, 0);
-    tx.vout[0].nValue =
-        int64_t(5000000000LL - 1000 - 50000) * SATOSHI - feeToUse;
-    TxId lowFeeTxId = tx.GetId();
-    g_mempool.addUnchecked(lowFeeTxId, entry.Fee(feeToUse).FromTx(tx));
-    pblocktemplate =
-        BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    // Verify that the free tx and the low fee tx didn't get selected.
-    for (const auto &txn : pblocktemplate->block.vtx) {
-        BOOST_CHECK(txn->GetId() != freeTxId);
-        BOOST_CHECK(txn->GetId() != lowFeeTxId);
-    }
-
-    // Test that packages above the min relay fee do get included, even if one
-    // of the transactions is below the min relay fee. Remove the low fee
-    // transaction and replace with a higher fee transaction
-    g_mempool.removeRecursive(CTransaction(tx));
-    // Now we should be just over the min relay fee.
-    tx.vout[0].nValue -= 2 * SATOSHI;
-    lowFeeTxId = tx.GetId();
-    g_mempool.addUnchecked(lowFeeTxId,
-                           entry.Fee(feeToUse + 2 * SATOSHI).FromTx(tx));
-    pblocktemplate =
-        BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_CHECK(pblocktemplate->block.vtx[4]->GetId() == freeTxId);
-    BOOST_CHECK(pblocktemplate->block.vtx[5]->GetId() == lowFeeTxId);
-
-    // Test that transaction selection properly updates ancestor fee
-    // calculations as ancestor transactions get included in a block. Add a
-    // 0-fee transaction that has 2 outputs.
-    tx.vin[0].prevout = COutPoint(txFirst[2]->GetId(), 0);
-    tx.vout.resize(2);
-    tx.vout[0].nValue = int64_t(5000000000LL - 100000000) * SATOSHI;
-    // 1BCC output.
-    tx.vout[1].nValue = 100000000 * SATOSHI;
-    TxId freeTxId2 = tx.GetId();
-    g_mempool.addUnchecked(
-        freeTxId2, entry.Fee(Amount::zero()).SpendsCoinbase(true).FromTx(tx));
-
-    // This tx can't be mined by itself.
-    tx.vin[0].prevout = COutPoint(freeTxId2, 0);
-    tx.vout.resize(1);
-    feeToUse = blockMinFeeRate.GetFee(freeTxSize);
-    tx.vout[0].nValue = int64_t(5000000000LL - 100000000) * SATOSHI - feeToUse;
-    TxId lowFeeTxId2 = tx.GetId();
-    g_mempool.addUnchecked(
-        lowFeeTxId2, entry.Fee(feeToUse).SpendsCoinbase(false).FromTx(tx));
-    pblocktemplate =
-        BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-
-    // Verify that this tx isn't selected.
-    for (const auto &txn : pblocktemplate->block.vtx) {
-        BOOST_CHECK(txn->GetId() != freeTxId2);
-        BOOST_CHECK(txn->GetId() != lowFeeTxId2);
-    }
-
-    // This tx will be mineable, and should cause lowFeeTxId2 to be selected as
-    // well.
-    tx.vin[0].prevout = COutPoint(freeTxId2, 1);
-    // 10k satoshi fee.
-    tx.vout[0].nValue = (100000000 - 10000) * SATOSHI;
-    g_mempool.addUnchecked(tx.GetId(), entry.Fee(10000 * SATOSHI).FromTx(tx));
-    pblocktemplate =
-        BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_CHECK(pblocktemplate->block.vtx[8]->GetId() == lowFeeTxId2);
 }
 
 void TestCoinbaseMessageEB(uint64_t eb, std::string cbmsg) {
