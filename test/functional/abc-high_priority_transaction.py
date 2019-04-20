@@ -46,11 +46,8 @@ class HighPriorityTransactionTest(BitcoinTestFramework):
         txids = []
 
         # Create hiprio_utxo_count number of txns with 0 fee
-        range_size = [0, hiprio_utxo_count]
-        start_range = range_size[0]
-        end_range = range_size[1]
         txids = self.create_small_transactions(
-            node, hiprio_utxos[start_range:end_range], end_range - start_range, 0)
+            node, hiprio_utxos[0:hiprio_utxo_count], hiprio_utxo_count, 0)
         return txids
 
     def run_test(self):
