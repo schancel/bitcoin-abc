@@ -603,11 +603,19 @@ void BlockAssembler::addPriorityTxs() {
     typedef std::map<CTxMemPool::txiter, double,
                      CTxMemPool::CompareIteratorByHash>::iterator waitPriIter;
     double actualPriority = -1;
+    // Must be below this fee to be considered for mining as a priority
+    // transaction
+    CFeeRate priorityFee = config->GetMinFeePerKB();
 
     vecPriority.reserve(mempool->mapTx.size());
     for (CTxMemPool::indexed_transaction_set::iterator mi =
              mempool->mapTx.begin();
          mi != mempool->mapTx.end(); ++mi) {
+
+        if (mi->GetFee() > priorityFee.GetFee(mi->GetTxSize())) {
+            continue;
+        }
+
         double dPriority = mi->GetPriority(nHeight);
         Amount dummy;
         mempool->ApplyDeltas(mi->GetTx().GetId(), dPriority, dummy);

@@ -10,14 +10,26 @@
 from test_framework.blocktools import create_confirmed_utxos
 from test_framework.messages import COIN
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, gen_return_txouts, satoshi_round
+from test_framework.util import satoshi_round, hex_str_to_bytes
+
+DEFAULT_MAX_BLOCK_SIZE = 100000  # 100Kb block
+DEFAULT_BLOCK_PRIORITY_PERCENT = 10
+LIMIT_FREE_RELAY = 10 * DEFAULT_MAX_BLOCK_SIZE / 1000
 
 
 class HighPriorityTransactionTest(BitcoinTestFramework):
+    def add_options(self, parser):
+        parser.add_argument("--percent", dest="block_priority_percent", type=int, default=DEFAULT_BLOCK_PRIORITY_PERCENT,
+                            help="What percent of high priority transactions should be tested")
+        parser.add_argument("--blocksize", dest="max_block_size", type=int, default=DEFAULT_MAX_BLOCK_SIZE,
+                            help="How big of a block to mine in bytes")
 
     def set_test_params(self):
-        self.num_nodes = 1
-        self.extra_args = [["-blockprioritypercentage=0", "-limitfreerelay=2"]]
+        # Get two nodes so we can mine stuff
+        self.num_nodes = 2
+        self.extra_args = [["-blockprioritypercentage={}".format(self.options.block_priority_percent),
+                            "-limitfreerelay={}".format(LIMIT_FREE_RELAY),
+                            "-blockmaxsize={}".format(self.options.max_block_size)]] * self.num_nodes
 
     def create_small_transactions(self, node, utxos, num, fee):
         addr = node.getnewaddress()
@@ -35,65 +47,50 @@ class HighPriorityTransactionTest(BitcoinTestFramework):
             txids.append(txid)
         return txids
 
-    def generate_high_priotransactions(self, node, count):
-        # generate a bunch of spendable utxos
-        self.txouts = gen_return_txouts()
-        # create 150 simple one input one output hi prio txns
-        hiprio_utxo_count = 150
-        age = 250
-        # be sure to make this utxo aged enough
-        hiprio_utxos = create_confirmed_utxos(node, hiprio_utxo_count, age)
-        txids = []
-
-        # Create hiprio_utxo_count number of txns with 0 fee
-        txids = self.create_small_transactions(
-            node, hiprio_utxos[0:hiprio_utxo_count], hiprio_utxo_count, 0)
-        return txids
-
     def run_test(self):
         # this is the priority cut off as defined in AllowFreeThreshold() (see: src/txmempool.h)
         # anything above that value is considered an high priority transaction
         hiprio_threshold = COIN * 144 / 250
         self.relayfee = self.nodes[0].getnetworkinfo()['relayfee']
 
-        # first test step: 0 reserved prio space in block
-        txids = self.generate_high_priotransactions(self.nodes[0], 150)
-        mempool_size_pre = self.nodes[0].getmempoolinfo()['bytes']
+        # Create enough UTXOs for us to be able to be able to create MAX_BLOCKS_SIZE bytes of high-fee transactions
+        # and 2 * self.options.block_priority_percent * self.options.max_block_size / 100 bytes of free transactions
+        utxos = create_confirmed_utxos(self.nodes[0], int(
+            2 * self.options.max_block_size / 157))
+        # Make sure our transactions are aged properly to be hipriority
+        self.nodes[0].generate(150)
+
+        # Create 20% of a block worth of non-confirmed free transactions.
+        hi_prio_txids = self.create_small_transactions(
+            self.nodes[0], utxos, len(utxos)//2, 0)
+        # Create 100% of a block worth of non-confirmed expensive transactions.
+        self.create_small_transactions(self.nodes[0], utxos, len(
+            utxos)//2, satoshi_round(1000 * 10e-8))
+
         mempool = self.nodes[0].getrawmempool(True)
-        # assert that all the txns are in the mempool and that all of them are hi prio
-        for i in txids:
+        # assert that all transactions are the appropriate priority
+        for i in hi_prio_txids:
             assert(i in mempool)
             assert(mempool[i]['currentpriority'] > hiprio_threshold)
 
-        # mine one block
-        self.nodes[0].generate(1)
+        # Get a block template, and see if it's correctly generated
+        block = self.nodes[0].getblocktemplate()
+        # assert that all the priority transactions are still in the mempool.
+        free_size = 0
+        total_size = 0
+        for txn in block['transactions'][1:]:
+            txn_size = len(hex_str_to_bytes(txn['data']))
+            if txn['fee'] == 0:
+                free_size += txn_size
+            total_size += txn_size
 
-        self.log.info(
-            "Assert that all high prio transactions haven't been mined")
-        assert_equal(self.nodes[0].getmempoolinfo()['bytes'], mempool_size_pre)
-
-        # restart with default blockprioritypercentage
-        self.stop_nodes()
-        self.nodes = []
-        self.add_nodes(self.num_nodes, [["-limitfreerelay=2"]])
-        self.start_nodes()
-
-        # second test step: default reserved prio space in block (100K).
-        # the mempool size is about 25K this means that all txns will be
-        # included in the soon to be mined block
-        txids = self.generate_high_priotransactions(self.nodes[0], 150)
-        mempool_size_pre = self.nodes[0].getmempoolinfo()['bytes']
-        mempool = self.nodes[0].getrawmempool(True)
-        # assert that all the txns are in the mempool and that all of them are hiprio
-        for i in txids:
-            assert(i in mempool)
-            assert(mempool[i]['currentpriority'] > hiprio_threshold)
-
-        # mine one block
-        self.nodes[0].generate(1)
-
-        self.log.info("Assert that all high prio transactions have been mined")
-        assert(self.nodes[0].getmempoolinfo()['bytes'] == 0)
+        # Asser the priority percentages are correct  We allow for a little wiggle room due to finite transactions sizes.
+        assert free_size < total_size * (self.options.block_priority_percent + 5) / \
+            100, "Too many free transactions: {}%".format(
+                free_size/total_size * 100)
+        assert free_size > total_size * self.options.block_priority_percent / \
+            200, "Not enough free transactions: {}%".format(
+                free_size/total_size * 100)
 
 
 if __name__ == '__main__':
