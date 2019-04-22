@@ -300,6 +300,10 @@ private:
      * Increments nPackagesSelected / nDescendantsUpdated with corresponding
      * statistics from the package selection (for logging statistics). */
     void addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated);
+    // Old version of addPackageTxs
+    // TODO: DELET THIS ONII-CHAN
+    void accuratelyAddPackageTxs(int &nPackagesSelected,
+                                 int &nDescendantsUpdated);
 
     /** Enum for the results from TestForBlock */
     enum class TestForBlockResult : uint8_t {

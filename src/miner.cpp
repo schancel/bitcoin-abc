@@ -461,6 +461,246 @@ void BlockAssembler::SortForBlock(
  */
 void BlockAssembler::addPackageTxs(int &nPackagesSelected,
                                    int &nDescendantsUpdated) {
+    std::vector<CBlockTemplateEntry> txPool;
+    txPool.reserve(txPool.size());
+
+    std::unordered_map<TxId, size_t, SaltedTxidHasher> txLocations;
+    // Fetch all the transactions in dependency order.
+    // Complexity: O(n)
+    txPool.reserve(mempool->mapTx.size());
+    size_t idx = 0;
+    for (const auto &mempoolEntry : mempool->mapTx.get<insertion_order>()) {
+        const CTransactionRef tx = mempoolEntry.GetSharedTx();
+        txPool.emplace_back(mempoolEntry.GetSharedTx(), mempoolEntry.GetFee(),
+                            mempoolEntry.GetModifiedFee(),
+                            mempoolEntry.GetTxSize(),
+                            mempoolEntry.GetSigOpCount());
+        txLocations[tx->GetId()] = idx;
+        idx += 1;
+    }
+
+    // Figure out how many parents transactions have.
+    // Complexity: O(n + m) where n is transactions, and m is edges.
+    //
+    // All the dependencies of a transaction are before the transaction.
+    // So we can iterate normally, and simply add all the parents to our
+    // package accumulators to our accumulator to our count. Note: If there
+    // is a diamond shaped inheritance, we will multi-count. We don't care, the
+    // extract coputation cost is not worth dealing with it.
+    std::unordered_set<TxId, SaltedTxidHasher> seen;
+    // Iterate in topographical order
+    for (auto &entry : txPool) {
+        // Clear out seen list, for the next transaction.
+        seen.clear();
+        for (const auto &txIn : entry.tx->vin) {
+            const TxId &parentId = txIn.prevout.GetTxId();
+            // Do not count a direct ancestor twice.
+            // We will count further ancestors twice though.
+            if (seen.count(parentId) != 0) {
+                continue;
+            }
+            seen.insert(parentId);
+            auto it = txLocations.find(parentId);
+            if (it == txLocations.end()) {
+                // Confirmed parent transaction
+                // (We know this because the mempool we have was guaranteed to
+                // be consistent)
+                continue;
+            }
+            // Add the parent data to this transaction
+            entry.AccountForParent(txPool[it->second]);
+        }
+    }
+
+    // Now sort them by package feeRate.
+    // Complexity: O(n log n)
+    //
+    // Sort first by the order of the transaction. All order zero transactions
+    // can go in based on package fees.
+    std::sort(txPool.begin(), txPool.end(),
+              [](const CBlockTemplateEntry &a, const CBlockTemplateEntry &b) {
+                  // We don't care about truncation of fees.  If the client
+                  // doesn't get a one sat of fees counted, oh well. The code
+                  // for avoiding division is atrocious.
+                  return a.GetOrder() == b.GetOrder()
+                             ? a.FeeRate() > b.FeeRate()
+                             : a.GetOrder() < b.GetOrder();
+              });
+
+    // Update the locations of all the transactions so we can find them again
+    // later. Complexity: O(n + m) where n is transactions, and m is edges.
+    idx = 0;
+    for (const auto &blockEntry : txPool) {
+        const CTransactionRef tx = blockEntry.tx;
+        txLocations[tx->GetId()] = idx;
+        idx += 1;
+    }
+
+    // Visit all the transactions in package feeRate order, adding them to the
+    // block in topological order. Complexity: O(n + m) (and some change for
+    // visiting diamond dependencies multiple times).
+    std::unordered_set<TxId, SaltedTxidHasher> txnsInvalid;
+    for (const auto &entry : txPool) {
+        TxId txId = entry.tx->GetId();
+        // Don't reprocess transactions
+        if (inBlock.count(txId) != 0 || txnsInvalid.count(txId) != 0) {
+            continue;
+        }
+
+        // We flag low-fee transactions as invalid, so that higher order
+        // transactions do not suck them into the block. We know from our
+        // ordering above that no higher-fee package exists or if it does, it's
+        // the tail of a higher feerate chain and we'll let it be mined in the
+        // next block.
+        if (entry.FeeRate() < blockMinFeeRate) {
+            txnsInvalid.insert(txId);
+            continue;
+        }
+
+        // Visit and include all the parents in the block, checking if they are
+        // valid.
+        std::stack<std::reference_wrapper<const CBlockTemplateEntry>>
+            ancestorStack;
+        std::stack<std::reference_wrapper<const CBlockTemplateEntry>> addStack;
+
+        // Check if package size would fit in the block.
+        // We won't need to check it for every ancestor below, because their
+        // values are included here already
+        auto blockSizeWithTx = nBlockSize + entry.packageSize;
+        auto maxBlockSigOps = GetMaxBlockSigOpsCount(blockSizeWithTx);
+        if (blockSizeWithTx >= nMaxGeneratedBlockSize) {
+            txnsInvalid.insert(txId);
+            goto invalid;
+        }
+
+        // Check if package sigOps would fit in the block
+        if (nBlockSigOps + entry.packageSigOps >= maxBlockSigOps) {
+            txnsInvalid.insert(txId);
+            goto invalid;
+        }
+
+        ancestorStack.push(entry);
+        // We do a DFS incase a transaction fails, and we add them to a stack
+        // for popping into the block.
+        while (!ancestorStack.empty()) {
+            const CBlockTemplateEntry &ancestor = ancestorStack.top();
+            const TxId &ancestorId = ancestor.tx->GetId();
+
+            ancestorStack.pop();
+            // Add it to the stack of items we will add once we have checked all
+            // the parents.
+            addStack.push(ancestor);
+
+            // Must check that lock times are still valid. This can be removed
+            // once MTP is always enforced as long as reorgs keep the mempool
+            // consistent.
+            //
+            // Old code checks the transaction in context.  It doesn't make
+            // sense to me though...
+            CValidationState state;
+            if (!ContextualCheckTransaction(*config, *ancestor.tx.get(), state,
+                                            nHeight, nLockTimeCutoff,
+                                            nMedianTimePast)) {
+                // A parent is invalid, we will need to skip the rest of the
+                // transactions So we don't include (now) invalid child. We will
+                // visit them later. So we can find all it's children during
+                // invalid handling.
+                txnsInvalid.insert(ancestorId);
+                goto invalid;
+            }
+
+            // Push all the ancestors on our DFS stack.
+            for (const auto &txIn : ancestor.tx->vin) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                bool hasBeenAdded = inBlock.count(parentId) != 0;
+                bool isInvalid = txnsInvalid.count(parentId) != 0;
+                if (isInvalid) {
+                    // We must have visited one of the parents before when
+                    // handling a different package. It was invalid, and we need
+                    // to mark this invalid as well.
+                    txnsInvalid.insert(ancestorId);
+                    goto invalid;
+                }
+                if (hasBeenAdded) {
+                    // Has already been added to the block. We can skip checking
+                    // it.
+                    continue;
+                }
+                // Don't yet mark the transaction as visited.  We may need to
+                // visit it twice in this loop to ensure topological ordering
+                // when popping off the stack.
+
+                auto it = txLocations.find(parentId);
+                if (it == txLocations.end()) {
+                    // Confirmed parent transaction
+                    // (We know this because the mempool we have was guaranteed
+                    // to be consistent)
+                    continue;
+                }
+                const CBlockTemplateEntry &ancestorParent = txPool[it->second];
+
+                // Record the parent so we can visit it later.
+                ancestorStack.push(ancestorParent);
+            }
+        }
+        // We know we can add the transaction here.
+        // Every item in the package has passed requirements.
+        while (!addStack.empty()) {
+            const CBlockTemplateEntry &entryToAdd = addStack.top();
+            const TxId &addTxID = entryToAdd.tx->GetId();
+            bool hasBeenAdded = inBlock.count(addTxID) != 0;
+
+            addStack.pop();
+            // The addStack can have duplicates, so we need to ensure we don't
+            // add the same transaction twice in this loop.
+            if (hasBeenAdded) {
+                continue;
+            }
+            inBlock.insert(addTxID);
+            pblocktemplate->entries.emplace_back(
+                entryToAdd.tx, entryToAdd.txFee, entryToAdd.txModFee,
+                entryToAdd.txSize, entryToAdd.txSigOps);
+            nBlockSize += entryToAdd.txSize;
+            ++nBlockTx;
+            nBlockSigOps += entryToAdd.txSigOps;
+            nFees += entryToAdd.txFee;
+        }
+        ++nPackagesSelected;
+        continue;
+    invalid:
+        // Mark all children of the invalid transaction as themselves invalid.
+        // Don't add anything in this package to a block.
+        while (!addStack.empty()) {
+            const CBlockTemplateEntry &child = addStack.top();
+            addStack.pop();
+            // If we are here, it means we marked one of the parents of an
+            // addStack item invalid. because the stack is in topological order,
+            // we can be sure we will mark invalid transactions in order going
+            // all the way back up to the root transaction.
+            for (const auto &txIn : child.tx->vin) {
+                const TxId &parentId = txIn.prevout.GetTxId();
+                bool isInvalid = txnsInvalid.count(parentId) != 0;
+                if (isInvalid) {
+                    txnsInvalid.insert(child.tx->GetId());
+                    // We can stop here, we only need to find one invalid parent
+                    // to know this is invalid.
+                    break;
+                }
+            }
+        }
+        continue;
+    }
+}
+
+/**
+ * accuratelyAddPackageTxs includes transactions paying a fee by ensuring that
+ * the partial ordering of transactions is maintained.  That is to say
+ * children come after parents, despite having a potentially larger fee.
+ * @param[out] nPackagesSelected    How many packages were selected
+ * @param[out] nDescendantsUpdated  Number of descendant transactions updated
+ */
+void BlockAssembler::accuratelyAddPackageTxs(int &nPackagesSelected,
+                                             int &nDescendantsUpdated) {
 
     // selection algorithm orders the mempool based on feerate of a
     // transaction including all unconfirmed ancestors. Since we don't remove

@@ -139,7 +139,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     BOOST_CHECK(pblocktemplate->block.vtx[3]->GetId() == mediumFeeTxId);
 
     // Test that a package below the block min tx fee doesn't get included
-    tx.vin[0].prevout = COutPoint(highFeeTxId, 0);
+    tx.vin[0].prevout = COutPoint(txFirst[2]->GetId(), 0);
     // 0 fee.
     tx.vout[0].nValue = int64_t(5000000000LL - 1000 - 50000) * SATOSHI;
     TxId freeTxId = tx.GetId();
@@ -176,11 +176,10 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
     BOOST_CHECK(pblocktemplate->block.vtx[4]->GetId() == freeTxId);
     BOOST_CHECK(pblocktemplate->block.vtx[5]->GetId() == lowFeeTxId);
-
     // Test that transaction selection properly updates ancestor fee
     // calculations as ancestor transactions get included in a block. Add a
     // 0-fee transaction that has 2 outputs.
-    tx.vin[0].prevout = COutPoint(txFirst[2]->GetId(), 0);
+    tx.vin[0].prevout = COutPoint(txFirst[3]->GetId(), 0);
     tx.vout.resize(2);
     tx.vout[0].nValue = int64_t(5000000000LL - 100000000) * SATOSHI;
     // 1BCC output.
@@ -192,7 +191,7 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
     // This tx can't be mined by itself.
     tx.vin[0].prevout = COutPoint(freeTxId2, 0);
     tx.vout.resize(1);
-    feeToUse = blockMinFeeRate.GetFee(freeTxSize);
+    feeToUse = blockMinFeeRate.GetFee(freeTxSize + 10);
     tx.vout[0].nValue = int64_t(5000000000LL - 100000000) * SATOSHI - feeToUse;
     TxId lowFeeTxId2 = tx.GetId();
     g_mempool.addUnchecked(
@@ -206,15 +205,20 @@ void TestPackageSelection(Config &config, CScript scriptPubKey,
         BOOST_CHECK(txn->GetId() != lowFeeTxId2);
     }
 
-    // This tx will be mineable, and should cause lowFeeTxId2 to be selected as
-    // well.
+    // This tx will be mineable, and could hypothetically cause lowFeeTxId2 to
+    // be selected but shouldn't since we don't continue to update packages, and
+    // have no way of knowing that its parent has been mined.
     tx.vin[0].prevout = COutPoint(freeTxId2, 1);
     // 10k satoshi fee.
     tx.vout[0].nValue = (100000000 - 10000) * SATOSHI;
     g_mempool.addUnchecked(tx.GetId(), entry.Fee(10000 * SATOSHI).FromTx(tx));
     pblocktemplate =
         BlockAssembler(config, g_mempool).CreateNewBlock(scriptPubKey);
-    BOOST_CHECK(pblocktemplate->block.vtx[8]->GetId() == lowFeeTxId2);
+    // Verify lowFeeTxID still didn't make it in, because we don't update
+    // packages on the fly.
+    for (const auto &txn : pblocktemplate->block.vtx) {
+        BOOST_CHECK(txn->GetId() != lowFeeTxId2);
+    }
 }
 
 void TestCoinbaseMessageEB(uint64_t eb, std::string cbmsg) {
