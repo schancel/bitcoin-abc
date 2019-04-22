@@ -29,6 +29,10 @@ struct CBlockTemplateEntry {
     //!< Total real fees paid by the transaction and cached to avoid parent
     //!< lookup
     Amount txFee;
+    //!< Modified fees from mempool.  Set by the prioritisetransaction rpc.
+    //!< We need this for ordering, but the above txFee for proper coinbase
+    //!< calculations.
+    Amount txModFee;
     //!< Cached total size of the transaction to avoid reserializing transaction
     size_t txSize;
     //!< Cached total number of SigOps
@@ -45,29 +49,58 @@ struct CBlockTemplateEntry {
     //!< Estimated package sigops (This is guaranteed to be >= real sigops)
     uint64_t packageSigOps;
 
-    CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, uint64_t _size,
-                        int64_t _sigOps)
-        : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps),
-          packageOrder(0), packageFee(_fees), packageSize(_size),
-          packageSigOps(_sigOps) {}
+    Amount maxPackageFee;
+    size_t maxPackageSize;
+
+    CBlockTemplateEntry(CTransactionRef _tx, Amount _realFees, Amount _modFees,
+                        uint64_t _size, int64_t _sigOps)
+        : tx(_tx), txFee(_realFees), txModFee(_modFees), txSize(_size),
+          txSigOps(_sigOps), packageOrder(0), packageFee(_modFees),
+          packageSize(_size), packageSigOps(_sigOps),
+          maxPackageFee(Amount::zero()), maxPackageSize(0) {}
 
     // Calculate the feerate for this transaction.  Use the minimum of the
     // package feerate, or the transaction itself.  Parents TXNs should never
     // end up "paying for" child transactions.
     CFeeRate FeeRate() const {
-        return int64_t(txSize) * packageFee < int64_t(packageSize) * txFee
-                   ? CFeeRate(packageFee, packageSize)
-                   : CFeeRate(txFee, txSize);
+        // If we are order 0, we know we can include the entire package for this
+        // fee rate. As there is no other package with a higher feerate, that we
+        // depend upon.
+        if (GetOrder() == 0) {
+            return CFeeRate(packageFee, packageSize);
+        }
+
+        return CFeeRate(txModFee, txSize);
+    }
+
+    size_t GetOrder() const {
+        // If we're the maximum fee of the package, set our maximum to our fee,
+        // and reset our ordeer.
+        if (int64_t(packageSize) * maxPackageFee <
+            int64_t(maxPackageSize) * packageFee) {
+            // This package, is the highest feerate package.  Nothing that this
+            // depends on could go in first.
+            return 0;
+        }
+        return packageOrder;
     }
 
 private:
-    // Include a parent transactions accounting into our own.
-    // We assume that this is used in topological order by BlockAssembler.
     void AccountForParent(CBlockTemplateEntry &parent) {
         packageOrder = std::max(parent.packageOrder + 1, packageOrder);
         packageFee += parent.packageFee;
         packageSize += parent.packageSize;
         packageSigOps += parent.packageSigOps;
+
+        // Propagate the maximum package fee, if it's bigger than anything we've
+        // already found. We know that AT LEAST this package would get in before
+        // us if we simply sort by package order. NOTE: Less than or equal to is
+        // important here, both sides are equal to zero upon first pass.
+        if (int64_t(parent.packageSize) * maxPackageFee <=
+            int64_t(maxPackageSize) * parent.packageFee) {
+            maxPackageFee = parent.packageFee;
+            maxPackageSize = parent.packageSize;
+        }
     }
 
     friend class BlockAssembler;
@@ -230,6 +263,10 @@ private:
      * Increments nPackagesSelected / nDescendantsUpdated with corresponding
      * statistics from the package selection (for logging statistics). */
     void addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated);
+    // Old version of addPackageTxs
+    // TODO: DELET THIS ONII-CHAN
+    void accuratelyAddPackageTxs(int &nPackagesSelected,
+                                 int &nDescendantsUpdated);
 
     /** Enum for the results from TestForBlock */
     enum class TestForBlockResult : uint8_t {
