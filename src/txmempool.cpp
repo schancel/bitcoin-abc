@@ -1293,14 +1293,14 @@ void DisconnectedBlockTransactions::importMempool(CTxMemPool &pool) {
     // the current queuedTx. This results in a valid sequence of transactions to
     // be reprocessed in updateMempoolForReorg.
 
-    // We create vtx in order of the entry_time index to facilitate for
+    // We create vtx in order of the insertion_order index to facilitate for
     // addForBlocks (which iterates in reverse order), as vtx probably end in
     // the correct ordering for queuedTx.
     std::vector<CTransactionRef> vtx;
     {
         LOCK(pool.cs);
         vtx.reserve(pool.mapTx.size());
-        for (const CTxMemPoolEntry &e : pool.mapTx.get<entry_time>()) {
+        for (const CTxMemPoolEntry &e : pool.mapTx.get<insertion_order>()) {
             vtx.push_back(e.GetSharedTx());
         }
         pool.clear();
