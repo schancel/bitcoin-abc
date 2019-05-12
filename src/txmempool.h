@@ -809,19 +809,6 @@ public:
     bool HaveCoin(const COutPoint &outpoint) const override;
 };
 
-// We want to sort transactions by coin age priority
-typedef std::pair<double, CTxMemPool::txiter> TxCoinAgePriority;
-
-struct TxCoinAgePriorityCompare {
-    bool operator()(const TxCoinAgePriority &a, const TxCoinAgePriority &b) {
-        if (a.first == b.first) {
-            // Reverse order to make sort less than
-            return CompareTxMemPoolEntryByScore()(*(b.second), *(a.second));
-        }
-        return a.first < b.first;
-    }
-};
-
 /**
  * DisconnectedBlockTransactions
  *
