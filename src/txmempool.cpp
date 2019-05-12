@@ -1074,32 +1074,7 @@ void CTxMemPool::RemoveStaged(setEntries &stage, bool updateDescendants,
     }
 }
 
-int CTxMemPool::Expire(int64_t time) {
-    LOCK(cs);
-    indexed_transaction_set::index<entry_time>::type::iterator it =
-        mapTx.get<entry_time>().begin();
-    setEntries toremove;
-    while (it != mapTx.get<entry_time>().end() && it->GetTime() < time) {
-        toremove.insert(mapTx.project<0>(it));
-        it++;
-    }
-
-    setEntries stage;
-    for (txiter removeit : toremove) {
-        CalculateDescendants(removeit, stage);
-    }
-
-    RemoveStaged(stage, false, MemPoolRemovalReason::EXPIRY);
-    return stage.size();
-}
-
 void CTxMemPool::LimitSize(size_t limit, unsigned long age) {
-    int expired = Expire(GetTime() - age);
-    if (expired != 0) {
-        LogPrint(BCLog::MEMPOOL,
-                 "Expired %i transactions from the memory pool\n", expired);
-    }
-
     std::vector<COutPoint> vNoSpendsRemaining;
     TrimToSize(limit, &vNoSpendsRemaining);
     for (const COutPoint &removed : vNoSpendsRemaining) {
@@ -1318,14 +1293,14 @@ void DisconnectedBlockTransactions::importMempool(CTxMemPool &pool) {
     // the current queuedTx. This results in a valid sequence of transactions to
     // be reprocessed in updateMempoolForReorg.
 
-    // We create vtx in order of the entry_time index to facilitate for
+    // We create vtx in order of the insertion_order index to facilitate for
     // addForBlocks (which iterates in reverse order), as vtx probably end in
     // the correct ordering for queuedTx.
     std::vector<CTransactionRef> vtx;
     {
         LOCK(pool.cs);
         vtx.reserve(pool.mapTx.size());
-        for (const CTxMemPoolEntry &e : pool.mapTx.get<entry_time>()) {
+        for (const CTxMemPoolEntry &e : pool.mapTx.get<insertion_order>()) {
             vtx.push_back(e.GetSharedTx());
         }
         pool.clear();

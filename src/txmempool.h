@@ -327,7 +327,6 @@ public:
 
 // Multi_index tag names
 struct descendant_score {};
-struct entry_time {};
 struct mining_score {};
 struct txid_index {};
 struct insertion_order {};
@@ -498,11 +497,6 @@ public:
                                  boost::multi_index::tag<descendant_score>,
                                  boost::multi_index::identity<CTxMemPoolEntry>,
                                  CompareTxMemPoolEntryByDescendantScore>,
-                             // sorted by entry time
-                             boost::multi_index::ordered_non_unique<
-                                 boost::multi_index::tag<entry_time>,
-                                 boost::multi_index::identity<CTxMemPoolEntry>,
-                                 CompareTxMemPoolEntryByEntryTime>,
                              // sorted by score (for mining prioritization)
                              boost::multi_index::ordered_unique<
                                  boost::multi_index::tag<mining_score>,
@@ -677,11 +671,6 @@ public:
     void TrimToSize(size_t sizelimit,
                     std::vector<COutPoint> *pvNoSpendsRemaining = nullptr);
 
-    /**
-     * Expire all transaction (and their dependencies) in the mempool older than
-     * time. Return the number of removed transactions.
-     */
-    int Expire(int64_t time);
 
     /**
      * Reduce the size of the mempool by expiring and then trimming the mempool.
