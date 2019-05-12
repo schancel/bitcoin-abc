@@ -700,11 +700,6 @@ public:
     void TrimToSize(size_t sizelimit,
                     std::vector<COutPoint> *pvNoSpendsRemaining = nullptr);
 
-    /**
-     * Expire all transaction (and their dependencies) in the mempool older than
-     * time. Return the number of removed transactions.
-     */
-    int Expire(int64_t time);
 
     /**
      * Reduce the size of the mempool by expiring and then trimming the mempool.

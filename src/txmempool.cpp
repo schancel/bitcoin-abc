@@ -1074,32 +1074,7 @@ void CTxMemPool::RemoveStaged(setEntries &stage, bool updateDescendants,
     }
 }
 
-int CTxMemPool::Expire(int64_t time) {
-    LOCK(cs);
-    indexed_transaction_set::index<entry_time>::type::iterator it =
-        mapTx.get<entry_time>().begin();
-    setEntries toremove;
-    while (it != mapTx.get<entry_time>().end() && it->GetTime() < time) {
-        toremove.insert(mapTx.project<0>(it));
-        it++;
-    }
-
-    setEntries stage;
-    for (txiter removeit : toremove) {
-        CalculateDescendants(removeit, stage);
-    }
-
-    RemoveStaged(stage, false, MemPoolRemovalReason::EXPIRY);
-    return stage.size();
-}
-
 void CTxMemPool::LimitSize(size_t limit, unsigned long age) {
-    int expired = Expire(GetTime() - age);
-    if (expired != 0) {
-        LogPrint(BCLog::MEMPOOL,
-                 "Expired %i transactions from the memory pool\n", expired);
-    }
-
     std::vector<COutPoint> vNoSpendsRemaining;
     TrimToSize(limit, &vNoSpendsRemaining);
     for (const COutPoint &removed : vNoSpendsRemaining) {
