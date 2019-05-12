@@ -325,32 +325,10 @@ public:
     }
 };
 
-class CompareTxMemPoolEntryByAncestorFee {
-public:
-    bool operator()(const CTxMemPoolEntry &a, const CTxMemPoolEntry &b) const {
-        double aFees = a.GetModFeesWithAncestors() / SATOSHI;
-        double aSize = a.GetSizeWithAncestors();
-
-        double bFees = b.GetModFeesWithAncestors() / SATOSHI;
-        double bSize = b.GetSizeWithAncestors();
-
-        // Avoid division by rewriting (a/b > c/d) as (a*d > c*b).
-        double f1 = aFees * bSize;
-        double f2 = aSize * bFees;
-
-        if (f1 == f2) {
-            return a.GetTx().GetId() < b.GetTx().GetId();
-        }
-
-        return f1 > f2;
-    }
-};
-
 // Multi_index tag names
 struct descendant_score {};
 struct entry_time {};
 struct mining_score {};
-struct ancestor_score {};
 struct txid_index {};
 struct insertion_order {};
 
@@ -530,11 +508,6 @@ public:
                                  boost::multi_index::tag<mining_score>,
                                  boost::multi_index::identity<CTxMemPoolEntry>,
                                  CompareTxMemPoolEntryByScore>,
-                             // sorted by fee rate with ancestors
-                             boost::multi_index::ordered_non_unique<
-                                 boost::multi_index::tag<ancestor_score>,
-                                 boost::multi_index::identity<CTxMemPoolEntry>,
-                                 CompareTxMemPoolEntryByAncestorFee>,
                              boost::multi_index::sequenced<
                                  boost::multi_index::tag<insertion_order>>>>
         indexed_transaction_set;
