@@ -1190,8 +1190,8 @@ void CTxMemPool::TrimToSize(size_t sizelimit,
     unsigned nTxnRemoved = 0;
     CFeeRate maxFeeRateRemoved(Amount::zero());
     while (!mapTx.empty() && DynamicMemoryUsage() > sizelimit) {
-        indexed_transaction_set::index<descendant_score>::type::iterator it =
-            mapTx.get<descendant_score>().begin();
+        indexed_transaction_set::index<mining_score>::type::iterator it =
+            mapTx.get<mining_score>().begin();
 
         // We set the new mempool min fee to the feerate of the removed set,
         // plus the "minimum reasonable fee rate" (ie some value under which we
