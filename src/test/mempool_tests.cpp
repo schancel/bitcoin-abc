@@ -329,14 +329,7 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
     BOOST_CHECK_EQUAL(pool.size(), 5UL);
 
     std::vector<std::string> sortedOrder;
-    sortedOrder.resize(5);
-    sortedOrder[0] = tx3.GetId().ToString(); // 0
-    sortedOrder[1] = tx5.GetId().ToString(); // 10000
-    sortedOrder[2] = tx1.GetId().ToString(); // 10000
-    sortedOrder[3] = tx4.GetId().ToString(); // 15000
-    sortedOrder[4] = tx2.GetId().ToString(); // 20000
     LOCK(pool.cs);
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest1");
 
     /* low fee but with high fee child */
     /* tx6 -> tx7 -> tx8, tx9 -> tx10 */
@@ -346,9 +339,6 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
     tx6.vout[0].nValue = 20 * COIN;
     pool.addUnchecked(tx6.GetId(), entry.Fee(Amount::zero()).FromTx(tx6));
     BOOST_CHECK_EQUAL(pool.size(), 6UL);
-    // Check that at this point, tx6 is sorted low
-    sortedOrder.insert(sortedOrder.begin(), tx6.GetId().ToString());
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest2");
 
     CTxMemPool::setEntries setAncestors;
     setAncestors.insert(pool.mapTx.find(tx6.GetId()));
@@ -374,12 +364,6 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
     pool.addUnchecked(tx7.GetId(), entry.FromTx(tx7), setAncestors);
     BOOST_CHECK_EQUAL(pool.size(), 7UL);
 
-    // Now tx6 should be sorted higher (high fee child): tx7, tx6, tx2, ...
-    sortedOrder.erase(sortedOrder.begin());
-    sortedOrder.push_back(tx6.GetId().ToString());
-    sortedOrder.push_back(tx7.GetId().ToString());
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest3");
-
     /* low fee child of tx7 */
     CMutableTransaction tx8 = CMutableTransaction();
     tx8.vin.resize(1);
@@ -393,9 +377,6 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
                       entry.Fee(Amount::zero()).Time(2).FromTx(tx8),
                       setAncestors);
 
-    // Now tx8 should be sorted low, but tx6/tx both high
-    sortedOrder.insert(sortedOrder.begin(), tx8.GetId().ToString());
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest4");
 
     /* low fee child of tx7 */
     CMutableTransaction tx9 = CMutableTransaction();
@@ -411,10 +392,6 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
 
     // tx9 should be sorted low
     BOOST_CHECK_EQUAL(pool.size(), 9UL);
-    sortedOrder.insert(sortedOrder.begin(), tx9.GetId().ToString());
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest5");
-
-    std::vector<std::string> snapshotOrder = sortedOrder;
 
     setAncestors.insert(pool.mapTx.find(tx8.GetId()));
     setAncestors.insert(pool.mapTx.find(tx9.GetId()));
@@ -439,36 +416,11 @@ BOOST_AUTO_TEST_CASE(MempoolIndexingTest) {
 
     pool.addUnchecked(tx10.GetId(), entry.FromTx(tx10), setAncestors);
 
-    /**
-     *  tx8 and tx9 should both now be sorted higher
-     *  Final order after tx10 is added:
-     *
-     *  tx3 = 0 (1)
-     *  tx5 = 10000 (1)
-     *  tx1 = 10000 (1)
-     *  tx4 = 15000 (1)
-     *  tx2 = 20000 (1)
-     *  tx9 = 200k (2 txs)
-     *  tx8 = 200k (2 txs)
-     *  tx10 = 200k (1 tx)
-     *  tx6 = 2.2M (5 txs)
-     *  tx7 = 2.2M (4 txs)
-     */
-    // take out tx9, tx8 from the beginning
-    sortedOrder.erase(sortedOrder.begin(), sortedOrder.begin() + 2);
-    sortedOrder.insert(sortedOrder.begin() + 5, tx9.GetId().ToString());
-    sortedOrder.insert(sortedOrder.begin() + 6, tx8.GetId().ToString());
-    // tx10 is just before tx6
-    sortedOrder.insert(sortedOrder.begin() + 7, tx10.GetId().ToString());
-    CheckSort<descendant_score>(pool, sortedOrder, "MempoolIndexingTest6");
-
     // there should be 10 transactions in the mempool
     BOOST_CHECK_EQUAL(pool.size(), 10UL);
 
     // Now try removing tx10 and verify the sort order returns to normal
     pool.removeRecursive(pool.mapTx.find(tx10.GetId())->GetTx());
-    CheckSort<descendant_score>(pool, snapshotOrder, "MempoolIndexingTest7");
-
     pool.removeRecursive(pool.mapTx.find(tx9.GetId())->GetTx());
     pool.removeRecursive(pool.mapTx.find(tx8.GetId())->GetTx());
     /* Now check the sort on the mining score index.

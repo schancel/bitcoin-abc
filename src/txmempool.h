@@ -326,7 +326,6 @@ public:
 };
 
 // Multi_index tag names
-struct descendant_score {};
 struct mining_score {};
 struct txid_index {};
 struct insertion_order {};
@@ -492,11 +491,6 @@ public:
                              // sorted by txid
                              boost::multi_index::hashed_unique<
                                  mempoolentry_txid, SaltedTxidHasher>,
-                             // sorted by fee rate
-                             boost::multi_index::ordered_non_unique<
-                                 boost::multi_index::tag<descendant_score>,
-                                 boost::multi_index::identity<CTxMemPoolEntry>,
-                                 CompareTxMemPoolEntryByDescendantScore>,
                              // sorted by score (for mining prioritization)
                              boost::multi_index::ordered_unique<
                                  boost::multi_index::tag<mining_score>,
