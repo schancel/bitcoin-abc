@@ -901,13 +901,11 @@ CTxMemPool::GetSortedDepthAndScore() const {
 
 void CTxMemPool::queryHashes(std::vector<uint256> &vtxid) {
     LOCK(cs);
-    auto iters = GetSortedDepthAndScore();
-
     vtxid.clear();
     vtxid.reserve(mapTx.size());
 
-    for (auto it : iters) {
-        vtxid.push_back(it->GetTx().GetId());
+    for (const auto& it : mapTx.get<insertion_order>()) {
+        vtxid.push_back(it.GetTx().GetId());
     }
 }
 
