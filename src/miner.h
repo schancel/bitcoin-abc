@@ -29,6 +29,10 @@ struct CBlockTemplateEntry {
     //!< Total real fees paid by the transaction and cached to avoid parent
     //!< lookup
     Amount txFee;
+    //!< Modified fees from mempool.  Set by the prioritisetransaction rpc.
+    //!< We need this for ordering, but the above txFee for proper coinbase
+    //!< calculations.
+    Amount txModFee;
     //!< Cached total size of the transaction to avoid reserializing transaction
     size_t txSize;
     //!< Cached total number of SigOps
@@ -45,11 +49,11 @@ struct CBlockTemplateEntry {
     //!< Estimated package sigops (This is guaranteed to be >= real sigops)
     uint64_t packageSigOps;
 
-    CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, uint64_t _size,
-                        int64_t _sigOps)
-        : tx(_tx), txFee(_fees), txSize(_size), txSigOps(_sigOps),
-          packageOrder(0), packageFee(_fees), packageSize(_size),
-          packageSigOps(_sigOps) {}
+    CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, Amount _modFees,
+                        uint64_t _size, int64_t _sigOps)
+        : tx(_tx), txFee(_fees), txModFee(_modFees), txSize(_size),
+          txSigOps(_sigOps), packageOrder(0), packageFee(_modFees),
+          packageSize(_size), packageSigOps(_sigOps) {}
 
     /**
      * Calculate the feerate for this transaction.  Use the minimum of the
@@ -59,9 +63,9 @@ struct CBlockTemplateEntry {
     CFeeRate FeeRate() const {
         // In order to avoid numerical errors, we reorder to use multiplication
         // instead of vision.
-        return int64_t(txSize) * packageFee < int64_t(packageSize) * txFee
+        return int64_t(txSize) * packageFee < int64_t(packageSize) * txModFee
                    ? CFeeRate(packageFee, packageSize)
-                   : CFeeRate(txFee, txSize);
+                   : CFeeRate(txModFee, txSize);
     }
 
 private:

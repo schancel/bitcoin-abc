@@ -140,7 +140,8 @@ BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn) {
     pblock = &pblocktemplate->block;
 
     // Add dummy coinbase tx as first transaction.  It is updated at the end.
-    pblocktemplate->entries.emplace_back(CTransactionRef(), -SATOSHI, 0, -1);
+    pblocktemplate->entries.emplace_back(CTransactionRef(), -SATOSHI, -SATOSHI,
+                                         0, -1);
 
     LOCK2(cs_main, mempool->cs);
     CBlockIndex *pindexPrev = chainActive.Tip();
@@ -358,9 +359,9 @@ BlockAssembler::TestForBlock(CTxMemPool::txiter it) {
 }
 
 void BlockAssembler::AddToBlock(CTxMemPool::txiter iter) {
-    pblocktemplate->entries.emplace_back(iter->GetSharedTx(), iter->GetFee(),
-                                         iter->GetTxSize(),
-                                         iter->GetSigOpCount());
+    pblocktemplate->entries.emplace_back(
+        iter->GetSharedTx(), iter->GetFee(), iter->GetModifiedFee(),
+        iter->GetTxSize(), iter->GetSigOpCount());
     nBlockSize += iter->GetTxSize();
     ++nBlockTx;
     nBlockSigOps += iter->GetSigOpCount();

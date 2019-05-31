@@ -780,21 +780,24 @@ BOOST_AUTO_TEST_CASE(BlockAssembler_construction) {
 BOOST_AUTO_TEST_CASE(TestCBlockTemplateEntry) {
     const CTransaction tx;
     CTransactionRef txRef = MakeTransactionRef(tx);
-    CBlockTemplateEntry txEntry(txRef, 1 * SATOSHI, 200, 10);
+    CBlockTemplateEntry txEntry(txRef, 1 * SATOSHI, 2 * SATOSHI, 200, 10);
     BOOST_CHECK_MESSAGE(txEntry.tx == txRef, "Transactions did not match");
     BOOST_CHECK_EQUAL(txEntry.txFee, 1 * SATOSHI);
+    BOOST_CHECK_EQUAL(txEntry.txModFee, 2 * SATOSHI);
     BOOST_CHECK_EQUAL(txEntry.txSize, 200);
     BOOST_CHECK_EQUAL(txEntry.txSigOps, 10);
-    BOOST_CHECK_EQUAL(txEntry.packageFee, 1 * SATOSHI);
+    BOOST_CHECK_EQUAL(txEntry.packageFee, 2 * SATOSHI);
     BOOST_CHECK_EQUAL(txEntry.packageSize, 200);
     BOOST_CHECK_EQUAL(txEntry.packageSigOps, 10);
 
-    CBlockTemplateEntry txChildEntry(txRef, 10 * SATOSHI, 2000, 20);
+    CBlockTemplateEntry txChildEntry(txRef, 10 * SATOSHI, 11 * SATOSHI, 2000,
+                                     20);
     CBlockTemplateEntryTest::AccountForParent(txChildEntry, txEntry);
     BOOST_CHECK_EQUAL(txChildEntry.txFee, 10 * SATOSHI);
+    BOOST_CHECK_EQUAL(txChildEntry.txModFee, 11 * SATOSHI);
     BOOST_CHECK_EQUAL(txChildEntry.txSize, 2000);
     BOOST_CHECK_EQUAL(txChildEntry.txSigOps, 20);
-    BOOST_CHECK_EQUAL(txChildEntry.packageFee, 11 * SATOSHI);
+    BOOST_CHECK_EQUAL(txChildEntry.packageFee, 13 * SATOSHI);
     BOOST_CHECK_EQUAL(txChildEntry.packageSize, 2200);
     BOOST_CHECK_EQUAL(txChildEntry.packageSigOps, 30);
 }
