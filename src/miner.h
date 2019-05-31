@@ -49,11 +49,19 @@ struct CBlockTemplateEntry {
     //!< Estimated package sigops (This is guaranteed to be >= real sigops)
     uint64_t packageSigOps;
 
+private:
+    //!< These values are used the fee and size for the package with the
+    //!< greatest fee-rate seen thus far.
+    Amount maxPackageFee;
+    size_t maxPackageSize;
+
+public:
     CBlockTemplateEntry(CTransactionRef _tx, Amount _fees, Amount _modFees,
                         uint64_t _size, int64_t _sigOps)
         : tx(_tx), txFee(_fees), txModFee(_modFees), txSize(_size),
           txSigOps(_sigOps), packageOrder(0), packageFee(_modFees),
-          packageSize(_size), packageSigOps(_sigOps) {}
+          packageSize(_size), packageSigOps(_sigOps),
+          maxPackageFee(Amount::zero()), maxPackageSize(0) {}
 
     /**
      * Calculate the feerate for this transaction.  Use the minimum of the
@@ -61,11 +69,26 @@ struct CBlockTemplateEntry {
      * end up "paying for" child transactions.
      */
     CFeeRate FeeRate() const {
-        // In order to avoid numerical errors, we reorder to use multiplication
-        // instead of vision.
-        return int64_t(txSize) * packageFee < int64_t(packageSize) * txModFee
-                   ? CFeeRate(packageFee, packageSize)
-                   : CFeeRate(txModFee, txSize);
+        // If we are order 0, we know we can include the entire package for this
+        // fee rate. As there is no other package with a higher feerate, that we
+        // depend upon.
+        if (GetOrder() == 0) {
+            return CFeeRate(packageFee, packageSize);
+        }
+
+        return CFeeRate(txModFee, txSize);
+    }
+
+    size_t GetOrder() const {
+        // If we're the end of a maximum fee package thus far, set our maximum
+        // to our package fee, and reset our order.
+        if (int64_t(packageSize) * maxPackageFee <=
+            int64_t(maxPackageSize) * packageFee) {
+            // This package, is the highest feerate package.  Nothing that this
+            // depends on could go in first.  Return an order of '0'
+            return 0;
+        }
+        return packageOrder;
     }
 
 private:
@@ -78,6 +101,42 @@ private:
         packageFee += parent.packageFee;
         packageSize += parent.packageSize;
         packageSigOps += parent.packageSigOps;
+
+        // Propagate the maximum package fee, if it's bigger than anything we've
+        // already found. We know that AT LEAST this package would get in before
+        // us if we simply sort by package order. NOTE: Less than or equal to is
+        // important here, both sides are equal to zero upon first pass.
+        if (int64_t(parent.GetMaxPackageSize()) * maxPackageFee <=
+            int64_t(maxPackageSize) * parent.GetMaxPackageFee()) {
+            maxPackageFee = parent.GetMaxPackageFee();
+            maxPackageSize = parent.GetMaxPackageSize();
+        }
+    }
+    /**
+     * GetMaxPackageSize is a helper function exclusively for use in
+     * AccountForParent It is a shortcut for choosing either the maxPackageSize,
+     * or packageSize, depending on which feerate is greater.
+     */
+    size_t GetMaxPackageSize() const {
+        if (int64_t(packageSize) * maxPackageFee <=
+            int64_t(maxPackageSize) * packageFee) {
+            return packageSize;
+        }
+
+        return maxPackageSize;
+    }
+    /**
+     * GetMaxPackageFee is a helper function exclusively for use in
+     * AccountForParent It is a shortcut for choosing either the maxPackageSize,
+     * or packageFee, depending on which feerate is greater.
+     */
+    Amount GetMaxPackageFee() const {
+        if (int64_t(packageSize) * maxPackageFee <=
+            int64_t(maxPackageSize) * packageFee) {
+            return packageFee;
+        }
+
+        return maxPackageFee;
     }
 
     friend class BlockAssembler;

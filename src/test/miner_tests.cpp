@@ -789,6 +789,9 @@ BOOST_AUTO_TEST_CASE(TestCBlockTemplateEntry) {
     BOOST_CHECK_EQUAL(txEntry.packageFee, 2 * SATOSHI);
     BOOST_CHECK_EQUAL(txEntry.packageSize, 200);
     BOOST_CHECK_EQUAL(txEntry.packageSigOps, 10);
+    BOOST_CHECK_EQUAL(txEntry.GetOrder(), 0);
+    BOOST_CHECK(txEntry.FeeRate() ==
+                CFeeRate(txEntry.packageFee, txEntry.packageSize));
 
     CBlockTemplateEntry txChildEntry(txRef, 10 * SATOSHI, 11 * SATOSHI, 2000,
                                      20);
@@ -800,6 +803,26 @@ BOOST_AUTO_TEST_CASE(TestCBlockTemplateEntry) {
     BOOST_CHECK_EQUAL(txChildEntry.packageFee, 13 * SATOSHI);
     BOOST_CHECK_EQUAL(txChildEntry.packageSize, 2200);
     BOOST_CHECK_EQUAL(txChildEntry.packageSigOps, 30);
+    BOOST_CHECK_EQUAL(txChildEntry.GetOrder(), 1);
+    BOOST_CHECK_EQUAL(txChildEntry.packageOrder, 1);
+    BOOST_CHECK(txChildEntry.FeeRate() ==
+                CFeeRate(txChildEntry.txModFee, txChildEntry.txSize));
+
+    CBlockTemplateEntry txGrandChildEntry(txRef, 10 * SATOSHI, 1000 * SATOSHI,
+                                          200, 20);
+    CBlockTemplateEntryTest::AccountForParent(txGrandChildEntry, txChildEntry);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.txFee, 10 * SATOSHI);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.txModFee, 1000 * SATOSHI);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.txSize, 200);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.txSigOps, 20);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.packageFee, 1013 * SATOSHI);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.packageSize, 2400);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.packageSigOps, 50);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.GetOrder(), 0);
+    BOOST_CHECK_EQUAL(txGrandChildEntry.packageOrder, 2);
+    BOOST_CHECK(
+        txGrandChildEntry.FeeRate() ==
+        CFeeRate(txGrandChildEntry.packageFee, txGrandChildEntry.packageSize));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
